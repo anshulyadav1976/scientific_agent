@@ -1,0 +1,20 @@
+{
+    "id": "plan-71eaca50-c220-48b5-b453-2071666d8052",
+    "plan_context": {
+        "query": "\n        Analyze the dataset located at 'C:\\Users\\anshu\\scientific_agent\\scientific_workflow\\uploaded_files\\GLB.Ts+dSST.csv'.\n        User context/request: 'take a look and lmk\r\n'\n\n        Follow these steps:\n        1. Ingest the data from the file path and provide a basic summary.\n        # Add steps for analysis, visualization, search, question generation in later phases\n        ",
+        "tool_ids": [
+            "data_ingestion_tool",
+            "llm_tool",
+            "search_tool"
+        ]
+    },
+    "steps": [
+        {
+            "task": "Ingest the dataset located at 'C:\\Users\\anshu\\scientific_agent\\scientific_workflow\\uploaded_files\\GLB.Ts+dSST.csv' using data_ingestion_tool and provide a basic summary of its structure including shape, columns, head, info, and describe. This step summarizes the dataset as instructed in the query.",
+            "inputs": [],
+            "tool_id": "data_ingestion_tool",
+            "output": "$dataset_summary",
+            "condition": null
+        }
+    ]
+}

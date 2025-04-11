@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+portia-sdk-python[all]
+python-dotenv
+pandas
+python-multipart # For file uploads
+jinja2
+# Add other dependencies as needed (e.g., matplotlib, scipy for later phases) 

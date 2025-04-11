@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Data{% endblock %}
+
+{% block content %}
+<h2>Upload Dataset and Start Analysis</h2>
+<form id="upload-form" action="/upload" method="post" enctype="multipart/form-data">
+    <div>
+        <label for="file">Choose CSV file:</label>
+        <input type="file" id="file" name="file" accept=".csv" required>
+    </div>
+    <div>
+        <label for="prompt">Initial Prompt/Context:</label><br>
+        <textarea id="prompt" name="prompt" rows="4" cols="50" required></textarea>
+    </div>
+    <button type="submit">Start Analysis</button>
+</form>
+
+<div id="status-area" style="margin-top: 20px;">
+    <h2>Analysis Status</h2>
+    <pre id="status-content">Waiting for analysis to start...</pre>
+</div>
+
+<!-- Added Thinking Process Area -->
+<div id="thinking-area" style="margin-top: 20px; display: none;">
+    <h2>Thinking Process</h2>
+    <pre id="thinking-content" style="white-space: pre-wrap; word-wrap: break-word;"></pre>
+</div>
+
+<div id="results-area" style="margin-top: 20px; display: none;">
+    <h2>Results</h2>
+    <pre id="results-content"></pre>
+</div>
+
+<div id="clarification-area" style="margin-top: 20px; display: none;">
+    <h2>Clarification Needed</h2>
+    <p id="clarification-question"></p>
+    <form id="clarification-form">
+        <input type="hidden" id="clarification-id" name="clarification_id">
+        <input type="text" id="clarification-response" name="response" required>
+        <button type="submit">Submit Response</button>
+    </form>
+</div>
+{% endblock %} 

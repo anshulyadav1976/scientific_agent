@@ -1,0 +1,22 @@
+"""Placeholder for base HTML template"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Scientific Workflow Agent{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/css/style.css') }}">
+</head>
+<body>
+    <header>
+        <h1>Scientific Workflow Agent</h1>
+    </header>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+    <footer>
+        <p>Powered by Portia AI</p>
+    </footer>
+    <script src="{{ url_for('static', path='/js/main.js') }}"></script>
+</body>
+</html> 
