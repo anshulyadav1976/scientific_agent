@@ -1,94 +1,183 @@
 """Main Agent logic for the Scientific Workflow"""
 
-from portia import (
-Portia,
- PlanRun)
-from config.agent_config import create_agent_config
-from tools import create_tool_registry
 import logging
 from typing import Optional
 
+from portia import (
+    Portia,
+    PlanRun,
+    PlanRunState,
+    Plan,
+    default_config,
+    LLMTool,
+    # DiskFileStorage is in the storage submodule
+    StorageClass,
+)
+# Import DiskFileStorage from its submodule
+from portia.storage import DiskFileStorage
+# from config.agent_config import create_agent_config # Not needed for M1
+# from tools import create_tool_registry # Not needed for M1
+# Import PlanBuilder for easier plan creation if needed, or construct manually
+# from portia import PlanBuilder
+
 logger = logging.getLogger(__name__)
+
+# --- Define the basic plan prompt for Milestone 1 --- #
+# We can make this more complex later. For now, just rephrase.
+# Alternatively, we could use the Step 1 prompt from newworkflow.md if DataIngestionTool is ready.
+# Let's stick to the simplest LLM-only plan for initial async testing.
+SIMPLE_PLAN_PROMPT_TEMPLATE = "Briefly acknowledge and rephrase the user's request: '{user_prompt}'"
+
 
 class ResearchAgent:
     def __init__(self):
         """Initializes the Research Agent with Portia configuration and tools."""
-        logger.info("Initializing ResearchAgent...")
-        self.config = create_agent_config()
-        self.tools = create_tool_registry()
-        self.portia = Portia(config=self.config, tools=self.tools)
-        logger.info("ResearchAgent initialized.")
+        # --- DEBUG LOGGING --- #
+        logger.info(f"Initializing ResearchAgent instance: ID={id(self)}")
+        # --- END DEBUG LOGGING --- #
 
-    async def start_analysis(self, file_path: str, user_prompt: str, data_type_hint: Optional[str] = None) -> PlanRun:
-        """Generates a plan and creates the initial PlanRun, but does not execute it."""
-        logger.info(f"Planning analysis for file: {file_path}, hint: {data_type_hint}, prompt: {user_prompt}")
+        # --- Configure for Disk Storage --- #
+        self.config = default_config()
+        # Explicitly set storage class to DISK
+        self.config.storage_class = StorageClass.DISK
+        # Ensure storage_dir is set if using DISK (Portia might default, but explicit is safer)
+        # Default is often ./portia_storage in the current working directory
+        if not self.config.storage_dir:
+             self.config.storage_dir = "./portia_storage"
+             logger.info(f"Defaulting storage_dir to: {self.config.storage_dir}")
+        # --- END Configure for Disk Storage --- #
 
-        # Define the high-level plan prompt for Portia
-        # Include the hint in the prompt for the planner
-        hint_text = f" The user provided a hint that the data type is '{data_type_hint}'." if data_type_hint else ""
-        plan_prompt = f"""
-        Analyze the dataset located at '{file_path}'.{hint_text}
-        User context/request: '{user_prompt}'
+        # LLMTool is included by default in Portia's DefaultToolRegistry
+        # self.llm_tool = LLMTool()
+        # No need to manually create registry when using config
+        # self.tools = InMemoryToolRegistry.from_local_tools([self.llm_tool])
 
-        Follow these steps:
-        1. Ingest the data from the file path using the data_ingestion_tool, passing the provided data type hint ('{data_type_hint}' if data_type_hint else 'None') if available. The tool will output a dictionary containing a summary and the detected_type ('tabular' or 'unstructured'). Name the output of this step $ingestion_output.
-        2. **Conditionally Summarize**: If the 'detected_type' in $ingestion_output is 'unstructured', use the llm_tool to generate a concise summary of the 'snippet' found in $ingestion_output.summary. Ask the llm_tool: "Provide a brief summary (2-3 sentences) of the following text snippet: [snippet content]". Name the output of this step $llm_summary. If the detected_type is 'tabular', skip this step.
-        3. **Conditionally Analyze**: If the 'detected_type' in $ingestion_output is 'tabular', use the analysis_tool. The required 'file_path' argument for this tool should be taken directly from the 'file_path' field within the $ingestion_output variable. Name the output of this step $analysis_results.
-        # Add step 4 for LLM summary of analysis results later
-        """
-        logger.debug(f"Generated plan prompt:\n{plan_prompt}")
+        # Initialize Portia with the config. It will create DiskFileStorage
+        # and DefaultToolRegistry (which includes LLMTool) automatically.
+        self.portia = Portia(config=self.config)
+
+        # --- DEBUG LOGGING --- #
+        logger.info(f"Agent {id(self)} using storage: ID={id(self.portia.storage)}, Type={type(self.portia.storage).__name__}")
+        # --- END DEBUG LOGGING --- #
+        logger.info("ResearchAgent initialized with default config and LLMTool.")
+
+    # Return type is now str (the run_id)
+    async def start_analysis(self, user_prompt: str, file_path: Optional[str] = None) -> str:
+        """Generates a plan for the user prompt and creates the initial PlanRun."""
+        logger.info(f"Planning analysis for prompt: {user_prompt}")
+        if file_path:
+            logger.info(f"File path {file_path} provided, but ignoring for initial plan generation.")
+            # TODO: Incorporate file_path into plan generation in later milestones
+
+        # Generate the simple plan prompt
+        plan_prompt = SIMPLE_PLAN_PROMPT_TEMPLATE.format(user_prompt=user_prompt)
+        logger.debug(f"Generating plan with prompt: {plan_prompt}")
 
         try:
             # 1. Generate the plan
-            logger.info("Generating plan...")
-            plan = self.portia.plan(plan_prompt) # This is synchronous
+            plan: Plan = self.portia.plan(plan_prompt)
             logger.info(f"Plan generated: {plan.id}")
-            # --- DEBUG LOG: Check planned args for analysis_tool --- 
-            try:
-                analysis_step_index = -1
-                for i, step in enumerate(plan.steps):
-                    if step.tool_id == "analysis_tool":
-                        analysis_step_index = i
-                        break
-                if analysis_step_index != -1:
-                     analysis_step = plan.steps[analysis_step_index]
-                     logger.info(f"[DEBUG] Planned args for analysis_tool (Step {analysis_step_index}): {getattr(analysis_step, 'tool_args', 'Not Set')}")
-                else:
-                     logger.info("[DEBUG] analysis_tool step not found in the generated plan.")
-            except Exception as log_ex:
-                 logger.error(f"[DEBUG] Error logging planned args: {log_ex}")
-            # --- END DEBUG LOG ---
-            
-            # 2. Create the PlanRun
-            logger.info(f"Creating PlanRun for plan {plan.id}...")
-            plan_run = self.portia.create_plan_run(plan)
+
+            # 2. Create the PlanRun (does not start execution)
+            plan_run: PlanRun = self.portia.create_plan_run(plan)
             logger.info(f"PlanRun created: {plan_run.id}, State: {plan_run.state}")
 
-            # 3. Return the initial PlanRun (DO NOT run or resume here)
-            return plan_run
+            # --- DEBUG LOGGING --- #
+            logger.info(f"[start_analysis] Agent {id(self)} returning run_id {plan_run.id} from storage {id(self.portia.storage)}")
+            # --- END DEBUG LOGGING --- #
+
+            # 3. Return the run_id
+            return str(plan_run.id)
+
         except Exception as e:
             logger.error(f"Error during planning or PlanRun creation: {e}", exc_info=True)
-            raise # Re-raise the exception to be handled by the caller (FastAPI endpoint)
+            # Re-raise the exception to be handled by the FastAPI endpoint
+            raise
 
-    async def get_run_status(self, run_id: str) -> PlanRun | None:
+    # --- Methods needed for stateful execution --- #
+
+    # Method to get status - needed by /status endpoint
+    async def get_run_status(self, run_id: str) -> PlanRun:
         """Retrieves the status and results of a specific plan run."""
         logger.debug(f"Getting status for run ID: {run_id}")
-        try:
-            # Access storage directly to get the run state
-            run = self.portia.storage.get_plan_run(run_id)
-            return run
-        except Exception as e:
-            # Handle cases where the run ID might not be found
-            logger.error(f"Error retrieving run status for {run_id}: {e}", exc_info=True)
-            return None
+        # Access storage directly. Raises PlanRunNotFoundError if not found.
+        # Assuming storage access might be async or okay to await from async context
+        run = self.portia.storage.get_plan_run(run_id)
+        return run
 
-    async def resolve_clarification(self, clarification_id: str, response: str) -> PlanRun:
+    # Method to get the plan - needed by /status endpoint later for thinking process
+    async def get_plan(self, plan_id: str) -> Plan:
+        """Retrieves the plan associated with a run."""
+        logger.debug(f"Getting plan for Plan ID: {plan_id}")
+        # Access storage directly. Raises PlanNotFoundError if not found.
+        # Assuming storage access might be async or okay to await from async context
+        plan = self.portia.storage.get_plan(plan_id)
+        return plan
+
+    # Method to resume a run - needed by /resume endpoint
+    # This *is* the main execution logic trigger in Portia
+    async def resume_run(self, run_id: str) -> PlanRun:
+        """Resumes a PlanRun execution."""
+        logger.info(f"Attempting to resume run: {run_id}")
+        # --- DEBUG LOGGING --- #
+        logger.info(f"[resume_run] Agent {id(self)} using storage {id(self.portia.storage)} to resume run {run_id}")
+        # --- END DEBUG LOGGING --- #
+        # Portia's resume handles running steps until completion or clarification
+        # Raises PlanRunNotFoundError, InvalidPlanRunStateError etc.
+        # Assuming portia.resume is awaitable or handles sync execution appropriately
+        resumed_run = self.portia.resume(plan_run_id=run_id)
+        logger.info(f"Resume completed for {run_id}. Final state: {resumed_run.state}")
+        return resumed_run
+
+    # Method to resolve clarification - needed by /clarify endpoint later
+    async def resolve_clarification(self, run_id: str, clarification_id: str, response: str) -> PlanRun:
         """Submits a user response to resolve an agent clarification."""
-        logger.info(f"Resolving clarification {clarification_id} with response: '{response}'")
-        try:
-            plan_run = await self.portia.resolve_clarification(clarification_id, response)
-            logger.info(f"Clarification resolved. Run ID: {plan_run.id}, New Status: {plan_run.state}")
-            return plan_run
-        except Exception as e:
-            logger.error(f"Error resolving clarification {clarification_id}: {e}", exc_info=True)
-            raise 
+        logger.info(f"Resolving clarification {clarification_id} for run {run_id} with response: '{response}'")
+        # Need to fetch the run first to find the clarification object
+        run = await self.get_run_status(run_id)
+        clarification_to_resolve = None
+        for clr in run.get_outstanding_clarifications():
+            if str(clr.id) == clarification_id:
+                clarification_to_resolve = clr
+                break
+
+        if not clarification_to_resolve:
+            error_msg = f"Outstanding clarification ID {clarification_id} not found for run {run_id}"
+            logger.error(error_msg)
+            # Depending on Portia version, InvalidState might be better
+            raise ValueError(error_msg)
+
+        # Use Portia's method to resolve
+        # Assuming portia.resolve_clarification is awaitable or handles sync execution
+        updated_run = self.portia.resolve_clarification(
+            clarification=clarification_to_resolve,
+            response=response,
+            plan_run=run
+        )
+        logger.info(f"Clarification {clarification_id} resolved for run {run_id}. New Status: {updated_run.state}")
+        return updated_run
+
+    # --- Methods below are not needed for Milestone 1 --- #
+
+    # async def get_run_status(self, run_id: str) -> PlanRun | None:
+    #     """Retrieves the status and results of a specific plan run."""
+    #     logger.debug(f"Getting status for run ID: {run_id}")
+    #     try:
+    #         # Access storage directly to get the run state
+    #         run = self.portia.storage.get_plan_run(run_id)
+    #         return run
+    #     except Exception as e:
+    #         # Handle cases where the run ID might not be found
+    #         logger.error(f"Error retrieving run status for {run_id}: {e}", exc_info=True)
+    #         return None
+
+    # async def resolve_clarification(self, clarification_id: str, response: str) -> PlanRun:
+    #     """Submits a user response to resolve an agent clarification."""
+    #     logger.info(f"Resolving clarification {clarification_id} with response: '{response}'")
+    #     try:
+    #         plan_run = await self.portia.resolve_clarification(clarification_id, response)
+    #         logger.info(f"Clarification resolved. Run ID: {plan_run.id}, New Status: {plan_run.state}")
+    #         return plan_run
+    #     except Exception as e:
+    #         logger.error(f"Error resolving clarification {clarification_id}: {e}", exc_info=True)
+    #         raise 

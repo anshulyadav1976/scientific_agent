@@ -1,51 +1,73 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scientific Workflow Agent</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <h1>Scientific Workflow Agent</h1>
 
-{% block title %}Upload Data{% endblock %}
+    <div class="container">
+        <div class="main-content">
+            <!-- Results Area (Chat) -->
+            <div id="results-area" class="results-area" style="display: block;">
+                <h2>Chat / Results</h2>
+                <div id="results-content" class="results-content">
+                    <!-- Chat messages will appear here -->
+                     <div class="chat-message system"><strong>System:</strong> Enter a prompt and optional file to start.</div>
+                </div>
+            </div>
 
-{% block content %}
-<h2>Upload Dataset and Start Analysis</h2>
-<form id="upload-form" action="/upload" method="post" enctype="multipart/form-data">
-    <div>
-        <label for="file">Choose CSV or TXT file:</label>
-        <input type="file" id="file" name="file" accept=".csv, .txt" required>
+            <!-- Status Area -->
+            <div id="status-area" class="status-area" style="display: block;">
+                <h2>Status</h2>
+                <pre id="status-content">Idle</pre>
+            </div>
+
+            <!-- Clarification Area (Initially Hidden) -->
+            <div id="clarification-area" class="clarification-area" style="display: none;">
+                <h2>Clarification Needed</h2>
+                <p id="clarification-question">[Question placeholder]</p>
+                <form id="clarification-form">
+                    <input type="hidden" id="clarification-id" name="clarification_id">
+                    <textarea id="clarification-response" name="response" rows="3" required></textarea>
+                    <button type="submit">Submit Response</button>
+                </form>
+            </div>
+
+
+            <!-- Upload Form (Input Area at Bottom) -->
+             <div class="input-area">
+                <form id="upload-form" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label for="file-upload">Upload File (Optional CSV/TXT):</label>
+                        <input type="file" id="file-upload" name="file" accept=".csv, .txt, text/plain, text/csv, application/vnd.ms-excel">
+                    </div>
+                    <!-- Optional: Add data type hint input if needed later
+                    <div class="form-group">
+                        <label for="data-type-hint">Data Type Hint (Optional):</label>
+                        <input type="text" id="data-type-hint" name="data_type_hint" placeholder="e.g., tabular, unstructured">
+                    </div>
+                     -->
+                    <div class="form-group prompt-group">
+                        <textarea id="prompt-input" name="prompt" placeholder="Enter your research prompt..." rows="3" required></textarea>
+                        <button type="submit">Send</button>
+                    </div>
+                </form>
+             </div>
+        </div>
+
+        <!-- Thinking Process Sidebar -->
+        <div id="thinking-area" class="thinking-area" style="display: none;">
+             <h2>Thinking Process</h2>
+             <div id="thinking-content" class="thinking-content">
+                 <!-- Thinking steps will appear here -->
+             </div>
+        </div>
     </div>
-    <div style="margin-top: 10px;">
-        <label>Data Type Hint:</label>
-        <input type="radio" id="type-tabular" name="data_type_hint" value="tabular" checked>
-        <label for="type-tabular">Tabular (CSV)</label>
-        <input type="radio" id="type-unstructured" name="data_type_hint" value="unstructured">
-        <label for="type-unstructured">Unstructured (TXT)</label>
-    </div>
-    <div style="margin-top: 10px;">
-        <label for="prompt">Initial Prompt/Context:</label><br>
-        <textarea id="prompt" name="prompt" rows="4" cols="50" required></textarea>
-    </div>
-    <button type="submit">Start Analysis</button>
-</form>
 
-<div id="status-area" style="margin-top: 20px;">
-    <h2>Analysis Status</h2>
-    <pre id="status-content">Waiting for analysis to start...</pre>
-</div>
-
-<!-- Added Thinking Process Area -->
-<div id="thinking-area" style="margin-top: 20px; display: none;">
-    <h2>Thinking Process</h2>
-    <pre id="thinking-content" style="white-space: pre-wrap; word-wrap: break-word;"></pre>
-</div>
-
-<div id="results-area" style="margin-top: 20px; display: none;">
-    <h2>Results</h2>
-    <pre id="results-content"></pre>
-</div>
-
-<div id="clarification-area" style="margin-top: 20px; display: none;">
-    <h2>Clarification Needed</h2>
-    <p id="clarification-question"></p>
-    <form id="clarification-form">
-        <input type="hidden" id="clarification-id" name="clarification_id">
-        <input type="text" id="clarification-response" name="response" required>
-        <button type="submit">Submit Response</button>
-    </form>
-</div>
-{% endblock %} 
+    <script src="/static/js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{
+    "id": "prun-a71f7834-f2e7-4ffd-8429-71ad9f45a766",
+    "plan_id": "plan-9f4065d1-7201-49f6-9aab-e1d3676d4e22",
+    "current_step_index": 0,
+    "state": "COMPLETE",
+    "execution_context": {
+        "end_user_id": null,
+        "additional_data": {},
+        "planning_agent_system_context_extension": null,
+        "execution_agent_system_context_extension": null
+    },
+    "outputs": {
+        "clarifications": [],
+        "step_outputs": {
+            "$rephrased_request": {
+                "value": "Everything is going well; please review the data I've provided.",
+                "summary": "Everything is going well; please review the data I've provided."
+            }
+        },
+        "final_output": {
+            "value": "Everything is going well; please review the data I've provided.",
+            "summary": "The user indicates that everything is proceeding smoothly and requests a review of the data they have supplied."
+        }
+    }
+}

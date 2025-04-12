@@ -20,61 +20,40 @@ const POLLING_INTERVAL_MS = 3000; // Poll every 3 seconds
 
 // --- Helper Functions --- 
 
+// Display status messages
 function updateStatus(message) {
+    if (!statusArea || !statusContent) return;
+    console.log("Status Update:", message);
     statusContent.textContent = message;
+    statusArea.style.display = 'block'; // Make sure status is visible
 }
 
-function displayResults(data) {
-    console.log('displayResults called. Data received:', data);
-    console.log('Type of data.formatted_summary:', typeof data.formatted_summary);
-    console.log('Value of data.formatted_summary:', data.formatted_summary);
-    // console.log('Type of data.raw_output:', typeof data.raw_output);
-    // console.log('Value of data.raw_output:', data.raw_output);
-
-    resultsContent.textContent = ''; // Clear previous results
-    // Use formatted_summary as the primary display
-    let displayContent = `Run ID: ${data.run_id}\nStatus: ${data.status}\n\n`;
-
-    if (data.formatted_summary) {
-         displayContent += "--- Analysis Summary ---\n";
-         displayContent += data.formatted_summary;
-    } 
-    // Fallback if summary is missing but raw output exists (less likely now)
-    else if (data.raw_output !== null && data.raw_output !== undefined) {
-        displayContent += "--- Raw Output Data ---\n";
-        if (typeof data.raw_output === 'object') {
-             try { displayContent += JSON.stringify(data.raw_output, null, 2); }
-             catch (e) { displayContent += "(Could not display raw object)"; }
-        } else {
-             displayContent += String(data.raw_output);
-        }
-    } else if (data.error) {
-        displayContent += `--- Error ---\n${data.error}`;
-    } else {
-        // Handle case where run is COMPLETE but both summary and raw output are missing
-        if (data.status === "COMPLETE") {
-             displayContent += "(Run completed, but no output data or summary was found)";
-        } else {
-             displayContent += "(No output, summary or error information received)";
-        }
+// Add messages to the main chat/results area
+function addChatMessage(sender, message) {
+    if (!resultsArea || !resultsContent) return;
+    const messageElement = document.createElement('div');
+    messageElement.classList.add('chat-message', sender.toLowerCase());
+    const senderStrong = document.createElement('strong');
+    senderStrong.textContent = sender + ": ";
+    messageElement.appendChild(senderStrong);
+    // Handle potential objects in message, display as string
+    if (typeof message === 'object' && message !== null) {
+        try { message = JSON.stringify(message, null, 2); } catch (e) { message = String(message); }
     }
-    console.log('Final displayContent for Results:', displayContent);
-
-    resultsContent.textContent = displayContent; // Set the text
-    // Ensure resultsArea is shown and others hidden (might be redundant but safe)
-    if (resultsArea) resultsArea.style.display = 'block';        
-    if (statusArea) statusArea.style.display = 'none';         
-    if (clarificationArea) clarificationArea.style.display = 'none';   
+    messageElement.appendChild(document.createTextNode(String(message))); // Ensure it's a string
+    resultsContent.appendChild(messageElement);
+    resultsArea.style.display = 'block';
+    resultsContent.scrollTop = resultsContent.scrollHeight;
 }
 
-function displayClarification(clarification) {
-    clarificationQuestion.textContent = clarification.prompt;
-    clarificationIdInput.value = clarification.id;
-    clarificationArea.style.display = 'block';
-    statusArea.style.display = 'none';
-    resultsArea.style.display = 'none';
+// Hide areas not used initially or when run finishes
+function hideAuxiliaryAreas(){
+    if (clarificationArea) clarificationArea.style.display = 'none';
+    // Don't hide thinkingArea by default, let displayThinkingProcess manage it
+    // if (thinkingArea) thinkingArea.style.display = 'none';
 }
 
+// Stop the polling interval
 function stopPolling() {
     if (pollingInterval) {
         clearInterval(pollingInterval);
@@ -85,52 +64,64 @@ function stopPolling() {
 
 // --- New Function: Display Thinking Process --- 
 function displayThinkingProcess(steps) {
-    if (!thinkingArea || !thinkingContent) return; // Exit if elements not found
-
-    if (!steps || steps.length === 0) {
-        thinkingContent.textContent = "(No thinking process steps available yet)";
-        thinkingArea.style.display = 'block'; // Show the area even if empty
+    if (!thinkingArea || !thinkingContent) {
+        console.warn("Thinking process display elements not found.");
         return;
     }
 
-    let formattedThinking = "";
-    steps.forEach(step => {
-        formattedThinking += `--- Step ${step.step_index} [${step.status}] ---\n`;
-        formattedThinking += `Description: ${step.description}\n`;
-        if (step.status !== 'Pending') { // Only show tool details if not pending
-             formattedThinking += `Tool: ${step.tool_id}\n`;
-             formattedThinking += `Args: ${JSON.stringify(step.tool_args)}\n`;
-             if (step.output !== null && step.output !== undefined) {
-                 // Display the raw output from the step
-                 let outputStr = String(step.output); // Start with string conversion
-                 try {
-                     // Attempt to pretty-print if it's JSON 
-                     const outputObj = JSON.parse(step.output);
-                     // Convert back to string with indentation for display
-                     outputStr = JSON.stringify(outputObj, null, 2); 
-                 } catch (e) {
-                     // If it wasn't valid JSON, stick with the simple string conversion
-                     // (already assigned to outputStr)
-                 }
+    if (!steps || !Array.isArray(steps)) {
+        thinkingContent.innerHTML = '<p>(Thinking process data unavailable)</p>';
+        thinkingArea.style.display = 'block'; // Show area even if empty/error
+        return;
+    }
+    if (steps.length === 0) {
+        thinkingContent.innerHTML = '<p>(No plan steps generated yet)</p>';
+        thinkingArea.style.display = 'block'; // Show area even if empty
+        return;
+    }
 
-                 // Display the output, potentially prefixed if it's the LLM summary
-                 if (step.output_name === '$llm_summary') {
-                    formattedThinking += `LLM Summary (${step.output_name}):\n${outputStr}\n`;
-                 } else {
-                    formattedThinking += `Output (${step.output_name}):\n${outputStr}\n`;
-                 }
-             } else {
-                 formattedThinking += `Output (${step.output_name}): (Not available or not generated yet)\n`;
-             }
+    let htmlContent = '';
+    steps.forEach(step => {
+        // Determine status class for styling
+        let statusClass = 'pending';
+        if (step.status === 'Executed') statusClass = 'executed';
+        else if (step.status === 'Executing') statusClass = 'executing';
+        else if (step.status === 'Paused (Needs Clarification)') statusClass = 'paused';
+        else if (step.status === 'Failed') statusClass = 'failed'; // Assuming FAILED is possible
+
+        htmlContent += `<div class="step-item ${statusClass}">`;
+        htmlContent += `  <div class="step-header">Step ${step.step_index}: [${step.status}]</div>`;
+        htmlContent += `  <div class="step-body">`;
+        htmlContent += `    <p><strong>Task:</strong> ${escapeHtml(step.description)}</p>`;
+        if (step.tool_id) {
+             htmlContent += `    <p><strong>Tool:</strong> ${escapeHtml(step.tool_id)}</p>`;
         }
-        formattedThinking += `\n`; // Add space between steps
+        // Display output if not pending/executing (and exists)
+        if (step.status !== 'Pending' && step.status !== 'Executing' && step.output) {
+            // Use <pre> for preformatted text, good for JSON or code output
+            htmlContent += `    <p><strong>Output (${escapeHtml(step.output_name || '')}):</strong></p>`;
+            htmlContent += `    <pre>${escapeHtml(step.output)}</pre>`;
+        }
+        htmlContent += `  </div>`; // end step-body
+        htmlContent += `</div>`; // end step-item
     });
 
-    thinkingContent.textContent = formattedThinking;
-    thinkingArea.style.display = 'block'; // Ensure area is visible
+    thinkingContent.innerHTML = htmlContent;
+    thinkingArea.style.display = 'block'; // Ensure area is visible when there's content
 }
 
-// --- Status Polling (Modified) --- 
+// Simple HTML escaping function
+function escapeHtml(unsafe) {
+    if (unsafe === null || unsafe === undefined) return '';
+    return String(unsafe)
+         .replace(/&/g, "&amp;")
+         .replace(/</g, "&lt;")
+         .replace(/>/g, "&gt;")
+         .replace(/"/g, "&quot;")
+         .replace(/'/g, "&#039;");
+ }
+
+// --- Status Polling (Updated for M2) --- 
 
 async function checkStatus() {
     if (!currentRunId) return;
@@ -141,206 +132,176 @@ async function checkStatus() {
         if (!response.ok) {
             const errorData = await response.json();
             updateStatus(`Error checking status: ${errorData.detail || response.statusText}`);
-            thinkingArea.style.display = 'none'; // Hide thinking on error
+            // Display error in chat as well?
+            addChatMessage("System", `Error checking status: ${errorData.detail || response.statusText}`);
             stopPolling();
             return;
         }
 
         const data = await response.json();
         console.log('Received status data:', data);
-        updateStatus(`Current status: ${data.status}`);
+        updateStatus(`Run ${data.run_id} Status: ${data.status}`);
 
-        // **** Update Thinking Process on every poll ****
+        // **** Update Thinking Process ****
         if (data.thinking_process) {
             displayThinkingProcess(data.thinking_process);
         } else {
-            // Handle case where thinking process might be missing
-             if (thinkingArea) thinkingArea.style.display = 'none';
+            // Optionally hide or show default message if no thinking process
+            if (thinkingArea) thinkingArea.style.display = 'none'; 
         }
 
+        // **** Display Intermediate Outputs will be added in M3 ****
+
         // Terminal states
-        const terminalStates = ["COMPLETE", "FAILED", "CANCELLED"];
+        const terminalStates = ["COMPLETE", "FAILED"];
         if (terminalStates.includes(data.status)) {
             console.log(`Run ${currentRunId} reached terminal state: ${data.status}`);
             stopPolling();
-            console.log('Calling displayResults with data:', data);
-            // Display final results (which hides status and clarification)
-            displayResults(data);
-             // Keep thinking area visible
-             if (thinkingArea) thinkingArea.style.display = 'block';
-        } else if (data.status === "NEED_CLARIFICATION") {
-            console.log(`Run ${currentRunId} needs clarification.`);
-            stopPolling();
-            // Display clarification (which hides status and results)
-            if (data.clarification) {
-                displayClarification(data.clarification);
-            } else {
-                 updateStatus("Clarification needed, but no details provided.");
+            // Display final output or error
+            if (data.status === "COMPLETE") {
+                addChatMessage("Agent", data.final_output !== null ? data.final_output : "(Run completed without final output)");
+            } else { // FAILED
+                addChatMessage("System", data.error || "Run failed with unknown error.");
             }
-             // Keep thinking area visible
-             if (thinkingArea) thinkingArea.style.display = 'block';
-        } else {
-             // For IN_PROGRESS, NOT_STARTED, etc.
-             // Keep status visible, hide results/clarification
-             if (resultsArea) resultsArea.style.display = 'none';
-             if (clarificationArea) clarificationArea.style.display = 'none';
-             if (statusArea) statusArea.style.display = 'block';
+            updateStatus(`Run ${currentRunId} finished with status: ${data.status}`);
+            // Keep thinking panel visible at the end
+            if (thinkingArea && data.thinking_process) thinkingArea.style.display = 'block'; 
         }
+        // **** Clarification handling will be added in M4 ****
+        // else if (data.status === "NEED_CLARIFICATION") { ... }
 
     } catch (error) {
         console.error("Error during status polling:", error);
         updateStatus(`Polling error: ${error.message}`);
-        // Decide whether to stop polling on error or keep trying
-        // stopPolling(); 
+        addChatMessage("System", `Polling error: ${error.message}`);
+        stopPolling(); // Stop polling on fetch errors
+        if (thinkingArea) thinkingArea.style.display = 'none'; // Hide thinking on error
     }
 }
 
+// Start the polling loop
 function startPolling(runId) {
     stopPolling(); // Clear any previous interval
     currentRunId = runId;
     console.log(`Starting polling for run_id: ${currentRunId}`);
-    // Initial check immediately, wrapped in try/catch
-    try {
-        checkStatus();
-    } catch(initialCheckError) {
-        console.error("Error during initial status check:", initialCheckError);
-        updateStatus(`Error during initial check: ${initialCheckError.message}`);
-    }
-    // Set interval for subsequent checks
+    checkStatus(); // Initial check immediately
     pollingInterval = setInterval(checkStatus, POLLING_INTERVAL_MS);
 }
 
-// --- New Function: Resume Run ---
+// --- Resume Run --- (Called after getting run_id)
 async function resumeRun(runId) {
     console.log(`Attempting to resume run_id: ${runId}`);
-    updateStatus(`Attempting to resume run ${runId}...`);
-    thinkingArea.style.display = 'block'; // Show thinking area during resume/run
-    clarificationArea.style.display = 'none'; // Hide clarification form
-    resultsArea.style.display = 'none'; // Hide results area
-    statusArea.style.display = 'block'; // Ensure status is visible
+    updateStatus(`Attempting to execute run ${runId}...`);
+    // Hide other areas, ensure status is visible
+    hideAuxiliaryAreas();
+    if (resultsArea) resultsArea.style.display = 'none'; // Hide results until polling shows output
+    if (statusArea) statusArea.style.display = 'block';
 
     try {
         const response = await fetch(`/resume/${runId}`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json' // Although no body, good practice
+                'Content-Type': 'application/json'
             }
         });
 
         if (!response.ok) {
             const errorData = await response.json();
             console.error(`Failed to resume run ${runId}:`, errorData);
-            updateStatus(`Error resuming run ${runId}: ${errorData.detail || response.statusText}`);
+            updateStatus(`Error starting run ${runId}: ${errorData.detail || response.statusText}`);
+            addChatMessage("System", `Error starting run: ${errorData.detail || response.statusText}`);
             stopPolling(); // Stop polling if resume fails
-            return; // Exit the function
+            return false; // Indicate failure
         }
 
-        const data = await response.json(); // Get response from resume (might include initial status)
+        const data = await response.json(); // Get response from resume
         console.log(`Resume request successful for ${runId}. Server response:`, data);
-        updateStatus(`Run ${runId} resuming... Polling for status.`); // Update status
-        startPolling(runId); // Start polling *after* successful resume call
+        updateStatus(`Run ${runId} started (${data.status}). Polling for updates...`); // Update status
+        return true; // Indicate success
 
     } catch (error) {
         console.error(`Network or other error resuming run ${runId}:`, error);
-        updateStatus(`Error resuming run ${runId}: ${error.message}`);
+        updateStatus(`Error starting run ${runId}: ${error.message}`);
+        addChatMessage("System", `Error starting run: ${error.message}`);
         stopPolling(); // Stop polling on critical errors
+        return false; // Indicate failure
     }
 }
 
 // --- Event Listeners --- 
 
 if (uploadForm) {
-    uploadForm.addEventListener('submit', async (event) => {
-        event.preventDefault(); // Prevent default form submission
-        stopPolling(); // Stop any previous polling
+    uploadForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        console.log("Form submitted.");
+        stopPolling(); // Stop any previous run polling
+
+        // Clear previous results and hide areas
+        if (resultsContent) resultsContent.innerHTML = '';
+        hideAuxiliaryAreas();
+        if (statusArea) statusArea.style.display = 'block'; // Show status area
+        if (resultsArea) resultsArea.style.display = 'none'; // Hide results initially
 
         const formData = new FormData(uploadForm);
-        updateStatus("Uploading file and initializing analysis plan...");
-        resultsArea.style.display = 'none';
-        clarificationArea.style.display = 'none';
-        thinkingArea.style.display = 'none'; // Hide thinking initially
-        statusArea.style.display = 'block';
+        const userPrompt = formData.get('prompt');
+
+        // Display user prompt immediately
+        addChatMessage("User", userPrompt);
+        updateStatus("Sending request to agent to create plan...");
 
         try {
-            const response = await fetch('/upload', {
+            // Step 1: Call /upload to get run_id
+            const uploadResponse = await fetch('/upload', {
                 method: 'POST',
-                body: formData,
+                body: formData
             });
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detail || `HTTP error! Status: ${response.status}`);
+            if (!uploadResponse.ok) {
+                const errorData = await uploadResponse.json();
+                console.error("Plan creation failed:", errorData);
+                addChatMessage("System", `Error creating plan: ${errorData.detail || uploadResponse.statusText}`);
+                updateStatus("Plan creation failed.");
+                return;
             }
 
-            const data = await response.json();
-            // Store runId globally immediately after getting it
-            currentRunId = data.run_id; 
-            console.log(`Upload successful. Received run_id: ${currentRunId}`);
-            updateStatus(`Plan created for Run ID: ${currentRunId}. Initiating execution...`);
-            
-            // *** Call resumeRun instead of startPolling ***
-            await resumeRun(currentRunId); 
+            const uploadData = await uploadResponse.json();
+            const runId = uploadData.run_id;
+            console.log("Received run_id:", runId);
+            updateStatus(`Plan created (Run ID: ${runId}). Starting execution...`);
+
+            // Step 2: Call /resume to start the run
+            const resumeSuccess = await resumeRun(runId);
+
+            // Step 3: If resume was successful, start polling
+            if (resumeSuccess) {
+                startPolling(runId);
+            } else {
+                // resumeRun function already updated status and logged error
+                updateStatus(`Failed to start execution for Run ID: ${runId}.`);
+            }
 
         } catch (error) {
-            console.error("Upload error:", error);
-            updateStatus(`Upload failed: ${error.message}`);
-            currentRunId = null; // Reset run ID on upload failure
+            console.error("Error during form submission process:", error);
+            addChatMessage("System", `Error: ${error.message}`);
+            updateStatus("Request process error.");
         }
     });
+} else {
+    console.error("Upload form not found!");
 }
 
-// Add clarification form submission handler
+// --- Remove clarification form listener for M1 --- //
+/*
 if (clarificationForm) {
-    clarificationForm.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        
-        if (!currentRunId) {
-            updateStatus("Error: No active run ID found for clarification.");
-            return;
-        }
-
-        const clarificationId = clarificationIdInput.value;
-        const userResponse = clarificationResponse.value; // Get value from the response input
-
-        if (!clarificationId || !userResponse) {
-            updateStatus("Error: Clarification ID or response is missing.");
-            // Optionally add visual feedback to the form
-            return;
-        }
-
-        console.log(`Submitting clarification for run ${currentRunId}, clarification ${clarificationId}`);
-        updateStatus("Submitting clarification...");
-        
-        try {
-             const response = await fetch(`/clarify/${currentRunId}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ 
-                    clarification_id: clarificationId, 
-                    response: userResponse 
-                }),
-            });
-
-            if (!response.ok) {
-                 const errorData = await response.json();
-                 throw new Error(errorData.detail || `HTTP error! Status: ${response.status}`);
-            }
-
-            const data = await response.json();
-            console.log("Clarification submitted successfully:", data);
-            updateStatus(`Clarification submitted for ${currentRunId}. Resuming run...`);
-            clarificationArea.style.display = 'none'; // Hide form on success
-            clarificationResponse.value = ''; // Clear the input field
-            
-            // *** Call resumeRun to continue processing ***
-            await resumeRun(currentRunId);
-
-        } catch (error) {
-             console.error("Clarification submission error:", error);
-             updateStatus(`Clarification failed: ${error.message}`);
-             // Keep the clarification form visible so the user can retry or see the error
-        }
+    clarificationForm.addEventListener('submit', async (e) => {
+       ...
     });
-} 
+} else {
+    console.error("Clarification form not found!");
+}
+*/
+
+// Initial state setup on load
+hideAuxiliaryAreas();
+if(resultsContent) resultsContent.innerHTML = ''; // Clear results on load
+if(statusContent) statusContent.textContent = 'Enter a prompt and optional file to start.'; 

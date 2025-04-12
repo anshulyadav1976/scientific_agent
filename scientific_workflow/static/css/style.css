@@ -1,50 +1,224 @@
-/* Basic styling */
+/* Basic Layout */
 body {
     font-family: sans-serif;
-    margin: 20px;
     line-height: 1.6;
-}
-
-header, footer {
+    margin: 0;
+    padding: 0;
     background-color: #f4f4f4;
-    padding: 10px;
+}
+
+h1, h2 {
+    color: #333;
     text-align: center;
-    margin-bottom: 20px;
+    padding: 10px 0;
 }
 
-form div {
+.container {
+    display: flex;
+    max-width: 1400px;
+    margin: 20px auto;
+    background-color: #fff;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+.main-content {
+    flex: 3; /* Takes up 3/4 of the space */
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid #ddd; /* Separator */
+}
+
+.thinking-area {
+    flex: 1; /* Takes up 1/4 of the space */
+    padding: 20px;
+    background-color: #f9f9f9;
+    overflow-y: auto; /* Allow scrolling if content overflows */
+    max-height: 90vh; /* Limit height */
+}
+
+/* Chat / Results Area */
+.results-area {
+    flex-grow: 1; /* Allows results area to fill space */
     margin-bottom: 15px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    overflow-y: auto; /* Enable scrolling */
+    max-height: 60vh; /* Limit height */
+    min-height: 300px; /* Ensure it has some height */
+    background-color: #fff;
+    padding: 10px;
 }
 
-label {
+.chat-message {
+    margin-bottom: 10px;
+    padding: 8px 12px;
+    border-radius: 15px;
+    max-width: 80%;
+    word-wrap: break-word;
+}
+.chat-message.user {
+    background-color: #dcf8c6;
+    align-self: flex-end;
+    margin-left: auto; /* Push user messages to the right */
+}
+.chat-message.agent {
+    background-color: #e9e9eb;
+    align-self: flex-start;
+}
+.chat-message.system {
+    background-color: #fde0e0;
+    align-self: center;
+    font-style: italic;
+    text-align: center;
+    max-width: 95%;
+}
+.chat-message strong {
+    display: block; /* Make sender name appear on its own line */
+    margin-bottom: 3px;
+    font-weight: bold;
+}
+
+/* Input Area */
+.input-area {
+    margin-top: auto; /* Push to bottom */
+    padding-top: 15px;
+    border-top: 1px solid #ddd;
+}
+
+#upload-form .form-group {
+    margin-bottom: 10px;
+}
+#upload-form label {
     display: block;
     margin-bottom: 5px;
 }
-
-input[type="file"],
-textarea,
-input[type="text"] {
-    width: 95%;
+#upload-form input[type="file"],
+#upload-form input[type="text"],
+#upload-form textarea {
+    width: 100%;
     padding: 8px;
-    margin-bottom: 10px;
+    margin-bottom: 5px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box; /* Include padding in width */
 }
-
-button {
-    padding: 10px 15px;
-    background-color: #5cb85c;
+#upload-form .prompt-group {
+    display: flex;
+    align-items: flex-end; /* Align button with bottom of textarea */
+}
+#upload-form .prompt-group textarea {
+    flex-grow: 1; /* Textarea takes available space */
+    margin-right: 10px;
+    resize: vertical; /* Allow vertical resize only */
+}
+#upload-form button {
+    padding: 10px 20px;
+    background-color: #007bff;
     color: white;
     border: none;
+    border-radius: 4px;
     cursor: pointer;
+    height: fit-content; /* Adjust height */
+}
+#upload-form button:hover {
+    background-color: #0056b3;
 }
 
-button:hover {
-    background-color: #4cae4c;
-}
-
-pre {
+/* Status Area */
+.status-area {
     background-color: #eee;
+    padding: 10px;
+    margin-bottom: 15px;
+    border-radius: 5px;
+}
+.status-area h2 {
+    margin-top: 0;
+    font-size: 1.1em;
+}
+#status-content {
+    white-space: pre-wrap; /* Wrap status text */
+    font-family: monospace;
+    font-size: 0.9em;
+}
+
+/* Thinking Process Styling */
+.thinking-area h2 {
+    margin-top: 0;
+}
+
+.thinking-content {
+    font-size: 0.9em;
+}
+
+.step-item {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-bottom: 10px;
+    background-color: #fff;
+}
+
+.step-header {
+    padding: 5px 10px;
+    font-weight: bold;
+    border-bottom: 1px solid #ddd;
+    background-color: #f0f0f0;
+    border-radius: 4px 4px 0 0;
+}
+
+.step-body {
+    padding: 10px;
+}
+.step-body p {
+    margin: 5px 0;
+}
+.step-body strong {
+    color: #555;
+}
+.step-body pre {
+    background-color: #e9e9eb;
+    padding: 8px;
+    border-radius: 4px;
+    overflow-x: auto; /* Allow horizontal scroll for long output */
+    white-space: pre-wrap; /* Wrap long lines */
+    word-wrap: break-word;
+    font-size: 0.85em;
+}
+
+/* Status Colors for Thinking Steps */
+.step-item.pending .step-header { background-color: #f0f0f0; color: #666; }
+.step-item.executing .step-header { background-color: #e6f7ff; color: #005f8f; }
+.step-item.executed .step-header { background-color: #dcf8c6; color: #367c2b; }
+.step-item.paused .step-header { background-color: #fffbe6; color: #8a6d3b; }
+.step-item.failed .step-header { background-color: #fde0e0; color: #a94442; }
+
+
+/* Clarification Area */
+.clarification-area {
+    background-color: #fffbe6;
+    border: 1px solid #ffeeba;
     padding: 15px;
+    border-radius: 5px;
+    margin-bottom: 15px;
+}
+.clarification-area h2 {
+    color: #8a6d3b;
+    margin-top: 0;
+}
+#clarification-form textarea {
+    width: 100%;
+    margin-bottom: 10px;
     border: 1px solid #ccc;
-    white-space: pre-wrap; /* Allows text wrapping */
-    word-wrap: break-word; /* Breaks long words */
-} 
+    border-radius: 4px;
+    padding: 8px;
+}
+#clarification-form button {
+    padding: 8px 15px;
+    background-color: #ffc107;
+    border: none;
+    border-radius: 4px;
+    color: #333;
+}
+#clarification-form button:hover {
+    background-color: #e0a800;
+}
