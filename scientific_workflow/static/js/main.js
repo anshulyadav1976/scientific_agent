@@ -17,6 +17,8 @@ const thinkingContent = document.getElementById('thinking-content');
 let currentRunId = null;
 let pollingInterval = null;
 const POLLING_INTERVAL_MS = 3000; // Poll every 3 seconds
+// Add a variable to track displayed step outputs for the current run
+let displayedStepOutputs = {}; // Key: runId, Value: Set of output names displayed
 
 // --- Helper Functions --- 
 
@@ -121,10 +123,20 @@ function escapeHtml(unsafe) {
          .replace(/'/g, "&#039;");
  }
 
-// --- Status Polling (Updated for M2) --- 
+// Function to reset displayed outputs when a new run starts
+function resetDisplayedOutputs(runId) {
+    displayedStepOutputs[runId] = new Set();
+}
+
+// --- Status Polling (Updated for M3 - Intermediate Outputs) ---
 
 async function checkStatus() {
     if (!currentRunId) return;
+
+    // Ensure we have a tracker for the current run
+    if (!displayedStepOutputs[currentRunId]) {
+        resetDisplayedOutputs(currentRunId);
+    }
 
     console.log(`Polling status for run_id: ${currentRunId}`);
     try {
@@ -132,7 +144,6 @@ async function checkStatus() {
         if (!response.ok) {
             const errorData = await response.json();
             updateStatus(`Error checking status: ${errorData.detail || response.statusText}`);
-            // Display error in chat as well?
             addChatMessage("System", `Error checking status: ${errorData.detail || response.statusText}`);
             stopPolling();
             return;
@@ -142,30 +153,69 @@ async function checkStatus() {
         console.log('Received status data:', data);
         updateStatus(`Run ${data.run_id} Status: ${data.status}`);
 
-        // **** Update Thinking Process ****
+        // Update Thinking Process display
         if (data.thinking_process) {
             displayThinkingProcess(data.thinking_process);
         } else {
-            // Optionally hide or show default message if no thinking process
-            if (thinkingArea) thinkingArea.style.display = 'none'; 
+            if (thinkingArea) thinkingArea.style.display = 'none';
         }
 
-        // **** Display Intermediate Outputs will be added in M3 ****
+        // **** Display NEW Intermediate Step Outputs ****
+        if (data.step_outputs && typeof data.step_outputs === 'object') {
+             const currentDisplayed = displayedStepOutputs[currentRunId];
+             // Loop through step outputs received from backend
+             // Use thinking_process to get the order if needed, but simple loop for now
+             for (const outputName in data.step_outputs) {
+                 // Check if this output hasn't been displayed yet for this run
+                 if (!currentDisplayed.has(outputName)) {
+                     const outputData = data.step_outputs[outputName];
+                     // Check if the output object has a 'value' property
+                     if (outputData && outputData.hasOwnProperty('value')) {
+                          console.log(`Displaying intermediate output: ${outputName}`);
+                          // Format the output value before adding
+                          let displayValue = outputData.value;
+                          if (typeof displayValue === 'object' && displayValue !== null) {
+                              try { displayValue = JSON.stringify(displayValue, null, 2); } catch (e) { displayValue = String(displayValue); }
+                          }
+                          addChatMessage("Agent", `Output [${escapeHtml(outputName)}]:\n${displayValue}`);
+                          currentDisplayed.add(outputName); // Mark as displayed
+                     } else {
+                          // Log if format is unexpected, but don't display
+                          console.warn(`Step output '${outputName}' has unexpected format:`, outputData);
+                     }
+                 }
+             }
+        }
 
         // Terminal states
         const terminalStates = ["COMPLETE", "FAILED"];
         if (terminalStates.includes(data.status)) {
             console.log(`Run ${currentRunId} reached terminal state: ${data.status}`);
             stopPolling();
-            // Display final output or error
+
+            // Display final output/error (only if different from last step output?)
+            const finalOutputName = "$final_report"; // TODO: Update this if final output name changes
             if (data.status === "COMPLETE") {
-                addChatMessage("Agent", data.final_output !== null ? data.final_output : "(Run completed without final output)");
+                 // Check if the final output has already been displayed as a step output
+                 const finalOutputAlreadyDisplayed = displayedStepOutputs[currentRunId]?.has(finalOutputName);
+                 if (!finalOutputAlreadyDisplayed && data.final_output !== null) {
+                     // Format the final output value before adding
+                     let displayValue = data.final_output;
+                     if (typeof displayValue === 'object' && displayValue !== null) {
+                        try { displayValue = JSON.stringify(displayValue, null, 2); } catch (e) { displayValue = String(displayValue); }
+                     }
+                     addChatMessage("Agent", `Final Output:\n${displayValue}`);
+                 } else if (data.final_output === null && displayedStepOutputs[currentRunId]?.size === 0) {
+                     // Handle cases where it completes with no output at all
+                      addChatMessage("Agent", "(Run completed without any output)");
+                 }
             } else { // FAILED
                 addChatMessage("System", data.error || "Run failed with unknown error.");
             }
             updateStatus(`Run ${currentRunId} finished with status: ${data.status}`);
-            // Keep thinking panel visible at the end
-            if (thinkingArea && data.thinking_process) thinkingArea.style.display = 'block'; 
+            if (thinkingArea && data.thinking_process) thinkingArea.style.display = 'block';
+             // Optional: Clear the tracker for the finished run
+             // delete displayedStepOutputs[currentRunId];
         }
         // **** Clarification handling will be added in M4 ****
         // else if (data.status === "NEED_CLARIFICATION") { ... }
@@ -174,8 +224,8 @@ async function checkStatus() {
         console.error("Error during status polling:", error);
         updateStatus(`Polling error: ${error.message}`);
         addChatMessage("System", `Polling error: ${error.message}`);
-        stopPolling(); // Stop polling on fetch errors
-        if (thinkingArea) thinkingArea.style.display = 'none'; // Hide thinking on error
+        stopPolling();
+        if (thinkingArea) thinkingArea.style.display = 'none';
     }
 }
 
@@ -235,6 +285,9 @@ if (uploadForm) {
         e.preventDefault();
         console.log("Form submitted.");
         stopPolling(); // Stop any previous run polling
+        currentRunId = null; // Reset current run ID
+        // Reset the tracker for displayed outputs
+        displayedStepOutputs = {};
 
         // Clear previous results and hide areas
         if (resultsContent) resultsContent.innerHTML = '';
@@ -266,6 +319,9 @@ if (uploadForm) {
 
             const uploadData = await uploadResponse.json();
             const runId = uploadData.run_id;
+            currentRunId = runId; // Set the new currentRunId
+            resetDisplayedOutputs(currentRunId); // Initialize tracker for this run
+
             console.log("Received run_id:", runId);
             updateStatus(`Plan created (Run ID: ${runId}). Starting execution...`);
 

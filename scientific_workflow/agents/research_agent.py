@@ -16,17 +16,19 @@ from portia import (
 # Import DiskFileStorage from its submodule
 from portia.storage import DiskFileStorage
 # from config.agent_config import create_agent_config # Not needed for M1
-# from tools import create_tool_registry # Not needed for M1
+from tools import create_tool_registry # Import locally to avoid circular dependency if tools need config
 # Import PlanBuilder for easier plan creation if needed, or construct manually
 # from portia import PlanBuilder
 
 logger = logging.getLogger(__name__)
 
-# --- Define the basic plan prompt for Milestone 1 --- #
-# We can make this more complex later. For now, just rephrase.
-# Alternatively, we could use the Step 1 prompt from newworkflow.md if DataIngestionTool is ready.
-# Let's stick to the simplest LLM-only plan for initial async testing.
-SIMPLE_PLAN_PROMPT_TEMPLATE = "Briefly acknowledge and rephrase the user's request: '{user_prompt}'"
+# --- Define the plan prompt for Milestone 2 --- #
+# This now includes Step 1a (Ingest) and Step 1b (LLM Plan Generation)
+PLAN_PROMPT_STEP_1 = """
+Follow these steps to analyze the user request:
+1.  **Ingest Data (Conditional):** If a file path '{file_path}' was provided, run the `data_ingestion_tool` with the `file_path` argument set to '{file_path}'. Name the output of this step `$ingestion_output`. If no file path was provided, skip this step and set `$ingestion_output` to None.
+2.  **Generate Initial Plan:** Analyze the user prompt '{user_prompt}' and the `$ingestion_output` (if available). Define the main research `goal`. Determine if analysis of the provided data is required ('`analysis_required`: true/false'). Outline key `research_questions` and list initial `search_topics` for literature/web search. Output ONLY a JSON object containing these keys: {{"goal": "...", "analysis_required": true/false, "research_questions": [...], "search_topics": [...]}}. Name the output of this step `$initial_plan`.
+"""
 
 
 class ResearchAgent:
@@ -38,23 +40,19 @@ class ResearchAgent:
 
         # --- Configure for Disk Storage --- #
         self.config = default_config()
-        # Explicitly set storage class to DISK
         self.config.storage_class = StorageClass.DISK
-        # Ensure storage_dir is set if using DISK (Portia might default, but explicit is safer)
-        # Default is often ./portia_storage in the current working directory
         if not self.config.storage_dir:
              self.config.storage_dir = "./portia_storage"
              logger.info(f"Defaulting storage_dir to: {self.config.storage_dir}")
         # --- END Configure for Disk Storage --- #
 
-        # LLMTool is included by default in Portia's DefaultToolRegistry
-        # self.llm_tool = LLMTool()
-        # No need to manually create registry when using config
-        # self.tools = InMemoryToolRegistry.from_local_tools([self.llm_tool])
+        # --- Load Tools --- #
+        # Use the create_tool_registry function which includes DataIngestionTool, LLMTool etc.
+        self.tools = create_tool_registry()
+        # --- END Load Tools --- #
 
-        # Initialize Portia with the config. It will create DiskFileStorage
-        # and DefaultToolRegistry (which includes LLMTool) automatically.
-        self.portia = Portia(config=self.config)
+        # Initialize Portia with config and the combined tool registry
+        self.portia = Portia(config=self.config, tools=self.tools)
 
         # --- DEBUG LOGGING --- #
         logger.info(f"Agent {id(self)} using storage: ID={id(self.portia.storage)}, Type={type(self.portia.storage).__name__}")
@@ -63,15 +61,15 @@ class ResearchAgent:
 
     # Return type is now str (the run_id)
     async def start_analysis(self, user_prompt: str, file_path: Optional[str] = None) -> str:
-        """Generates a plan for the user prompt and creates the initial PlanRun."""
+        """Generates a plan for the user prompt & optional file, and creates the initial PlanRun."""
         logger.info(f"Planning analysis for prompt: {user_prompt}")
+        file_path_str = file_path if file_path else "None" # Pass "None" string if no path
         if file_path:
-            logger.info(f"File path {file_path} provided, but ignoring for initial plan generation.")
-            # TODO: Incorporate file_path into plan generation in later milestones
+            logger.info(f"File path {file_path} provided.")
 
-        # Generate the simple plan prompt
-        plan_prompt = SIMPLE_PLAN_PROMPT_TEMPLATE.format(user_prompt=user_prompt)
-        logger.debug(f"Generating plan with prompt: {plan_prompt}")
+        # Generate the plan prompt using the template for Step 1
+        plan_prompt = PLAN_PROMPT_STEP_1.format(user_prompt=user_prompt, file_path=file_path_str)
+        logger.debug(f"Generating plan with prompt:\n{plan_prompt}")
 
         try:
             # 1. Generate the plan

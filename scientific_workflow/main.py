@@ -509,22 +509,23 @@ async def get_status(run_id: str):
             "status": plan_run.state.value,
             "final_output": None,
             "error": None,
-            "thinking_process": thinking_process, # Add thinking process list
+            "thinking_process": thinking_process,
+            # Add step_outputs
+            "step_outputs": plan_run.outputs.step_outputs,
             # "clarification": None, # Add in M4
         }
 
         # --- Handle FINAL Output/Error based on Run State --- #
         if plan_run.state == PlanRunState.COMPLETE:
             logger.debug(f"Run {run_id} completed. Accessing final output.")
-            # Try to get final_output.value
             final_output_obj = plan_run.outputs.final_output
             if final_output_obj and hasattr(final_output_obj, 'value'):
-                # Store raw value, frontend will display it as string for now
                 response_content["final_output"] = final_output_obj.value
             else:
-                 # Fallback or log warning if needed
                  logger.warning(f"Run {run_id} complete but no final_output.value found.")
-                 response_content["final_output"] = "(Completed, but no final output available)"
+                 # If step outputs exist, the final result might be among them
+                 # Frontend logic will handle displaying the last step output if final_output is null
+                 # response_content["final_output"] = "(Completed, but no final output available)" # Keep it null
 
         elif plan_run.state == PlanRunState.FAILED:
             logger.warning(f"Run {run_id} failed. Reporting error.")
