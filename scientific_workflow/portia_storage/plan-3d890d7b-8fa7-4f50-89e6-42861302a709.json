@@ -1,0 +1,33 @@
+{
+    "id": "plan-3d890d7b-8fa7-4f50-89e6-42861302a709",
+    "plan_context": {
+        "query": "\nFollow these steps to analyze the user request:\n1.  **Ingest Data (Conditional):** If a file path 'C:\\Users\\anshu\\scientific_agent\\scientific_workflow\\uploaded_files\\student_depression_dataset.csv' was provided, run the `data_ingestion_tool` with the `file_path` argument set to 'C:\\Users\\anshu\\scientific_agent\\scientific_workflow\\uploaded_files\\student_depression_dataset.csv'. Name the output of this step `$ingestion_output`. If no file path was provided, skip this step and set `$ingestion_output` to None.\n2.  **Generate Initial Plan:** Analyze the user prompt 'can you analyse this please' and the `$ingestion_output` (if available). Define the main research `goal`. Determine if analysis of the provided data is required ('`analysis_required`: true/false'). Outline key `research_questions` and list initial `search_topics` for literature/web search. Output ONLY a JSON object containing these keys: {\"goal\": \"...\", \"analysis_required\": true/false, \"research_questions\": [...], \"search_topics\": [...]}. Name the output of this step `$initial_plan`.\n",
+        "tool_ids": [
+            "analysis_tool",
+            "data_ingestion_tool",
+            "llm_tool",
+            "search_tool"
+        ]
+    },
+    "steps": [
+        {
+            "task": "Ingest the data from the provided file path 'C:\\Users\\anshu\\scientific_agent\\scientific_workflow\\uploaded_files\\student_depression_dataset.csv' using the data ingestion tool.",
+            "inputs": [],
+            "tool_id": "data_ingestion_tool",
+            "output": "$ingestion_output",
+            "condition": null
+        },
+        {
+            "task": "Generate an initial plan by analyzing the prompt 'can you analyse this please' along with the ingestion output. Define the research goal, determine if an analysis is required, outline key research questions, and list initial search topics. The expected output is a JSON object with keys 'goal', 'analysis_required', 'research_questions', and 'search_topics'.",
+            "inputs": [
+                {
+                    "name": "$ingestion_output",
+                    "description": "Output from the data ingestion step."
+                }
+            ],
+            "tool_id": "llm_tool",
+            "output": "$initial_plan",
+            "condition": null
+        }
+    ]
+}

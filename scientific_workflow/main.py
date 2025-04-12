@@ -503,31 +503,54 @@ async def get_status(run_id: str):
         else:
              logger.warning(f"Could not retrieve plan for run {run_id}, thinking process unavailable.")
 
-        # --- Prepare the basic response content for M1 - Update for M2 --- #
+        # --- Prepare the basic response content --- #
+        # Process step outputs to make them JSON serializable
+        serializable_step_outputs = {}
+        if plan_run.outputs.step_outputs:
+            for name, output_obj in plan_run.outputs.step_outputs.items():
+                if hasattr(output_obj, 'value'):
+                    val = output_obj.value
+                    # Attempt to serialize complex types, fallback to string
+                    if isinstance(val, (dict, list, tuple, set)):
+                        try:
+                            serializable_step_outputs[name] = json.dumps(val) # Store as JSON string
+                        except TypeError:
+                             serializable_step_outputs[name] = str(val) # Fallback
+                    else:
+                         serializable_step_outputs[name] = str(val)
+                else:
+                     serializable_step_outputs[name] = "(Output object lacks .value)"
+
+        serializable_final_output = None
+        # Process final output as well
+        if plan_run.state == PlanRunState.COMPLETE:
+            final_output_obj = plan_run.outputs.final_output
+            if final_output_obj and hasattr(final_output_obj, 'value'):
+                val = final_output_obj.value
+                if isinstance(val, (dict, list, tuple, set)):
+                     try:
+                         serializable_final_output = json.dumps(val) # Store as JSON string
+                     except TypeError:
+                         serializable_final_output = str(val) # Fallback
+                else:
+                     serializable_final_output = str(val)
+            else:
+                 logger.warning(f"Run {run_id} complete but no final_output.value found.")
+                 serializable_final_output = "(Completed, but no final output available)"
+
         response_content = {
             "run_id": str(plan_run.id),
             "status": plan_run.state.value,
-            "final_output": None,
+            "final_output": serializable_final_output, # Use processed value
             "error": None,
             "thinking_process": thinking_process,
-            # Add step_outputs
-            "step_outputs": plan_run.outputs.step_outputs,
+            # Add step_outputs - Use the processed dictionary
+            "step_outputs": serializable_step_outputs,
             # "clarification": None, # Add in M4
         }
 
         # --- Handle FINAL Output/Error based on Run State --- #
-        if plan_run.state == PlanRunState.COMPLETE:
-            logger.debug(f"Run {run_id} completed. Accessing final output.")
-            final_output_obj = plan_run.outputs.final_output
-            if final_output_obj and hasattr(final_output_obj, 'value'):
-                response_content["final_output"] = final_output_obj.value
-            else:
-                 logger.warning(f"Run {run_id} complete but no final_output.value found.")
-                 # If step outputs exist, the final result might be among them
-                 # Frontend logic will handle displaying the last step output if final_output is null
-                 # response_content["final_output"] = "(Completed, but no final output available)" # Keep it null
-
-        elif plan_run.state == PlanRunState.FAILED:
+        if plan_run.state == PlanRunState.FAILED:
             logger.warning(f"Run {run_id} failed. Reporting error.")
             # TODO: Extract more specific error from plan_run if possible in future Portia versions
             response_content["error"] = f"Run failed. Check agent logs for details."

@@ -1,0 +1,33 @@
+{
+    "id": "plan-949e6928-11fd-4e7a-87ad-4bf9ffcf18c4",
+    "plan_context": {
+        "query": "\nFollow these steps to analyze the user request:\n1.  **Ingest Data (Conditional):** If a file path 'C:\\Users\\anshu\\scientific_agent\\scientific_workflow\\uploaded_files\\student_depression_dataset.csv' was provided, run the `data_ingestion_tool` with the `file_path` argument set to 'C:\\Users\\anshu\\scientific_agent\\scientific_workflow\\uploaded_files\\student_depression_dataset.csv'. Name the output of this step `$ingestion_output`. If no file path was provided, skip this step and set `$ingestion_output` to None.\n2.  **Generate Initial Plan:** Analyze the user prompt 'can you analyse this data please\r\n' and the `$ingestion_output` (if available). Define the main research `goal`. Determine if analysis of the provided data is required ('`analysis_required`: true/false'). Outline key `research_questions` and list initial `search_topics` for literature/web search. Output ONLY a JSON object containing these keys: {\"goal\": \"...\", \"analysis_required\": true/false, \"research_questions\": [...], \"search_topics\": [...]}. Name the output of this step `$initial_plan`.\n",
+        "tool_ids": [
+            "analysis_tool",
+            "data_ingestion_tool",
+            "llm_tool",
+            "search_tool"
+        ]
+    },
+    "steps": [
+        {
+            "task": "Using the provided file path 'C:\\Users\\anshu\\scientific_agent\\scientific_workflow\\uploaded_files\\student_depression_dataset.csv', run data ingestion to extract a summary of the file's contents. This step will ingest the file if it is provided.",
+            "inputs": [],
+            "tool_id": "data_ingestion_tool",
+            "output": "$ingestion_output",
+            "condition": "if the file path 'C:\\Users\\anshu\\scientific_agent\\scientific_workflow\\uploaded_files\\student_depression_dataset.csv' is provided"
+        },
+        {
+            "task": "Analyze the prompt 'can you analyse this data please' together with the output from $ingestion_output to generate an initial plan. This plan should include the main research goal, a Boolean indicating if analysis of the provided data is required, a list of key research questions, and initial search topics for literature/web search. The output must be a JSON object containing the keys: goal, analysis_required, research_questions, and search_topics.",
+            "inputs": [
+                {
+                    "name": "$ingestion_output",
+                    "description": "The output from the data ingestion step containing the summary of the CSV file."
+                }
+            ],
+            "tool_id": "llm_tool",
+            "output": "$initial_plan",
+            "condition": null
+        }
+    ]
+}
