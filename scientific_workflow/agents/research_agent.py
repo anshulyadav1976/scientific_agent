@@ -33,7 +33,7 @@ class ResearchAgent:
         Follow these steps:
         1. Ingest the data from the file path using the data_ingestion_tool, passing the provided data type hint ('{data_type_hint}' if data_type_hint else 'None') if available. The tool will output a dictionary containing a summary and the detected_type ('tabular' or 'unstructured'). Name the output of this step $ingestion_output.
         2. **Conditionally Summarize**: If the 'detected_type' in $ingestion_output is 'unstructured', use the llm_tool to generate a concise summary of the 'snippet' found in $ingestion_output.summary. Ask the llm_tool: "Provide a brief summary (2-3 sentences) of the following text snippet: [snippet content]". Name the output of this step $llm_summary. If the detected_type is 'tabular', skip this step.
-        3. **Conditionally Analyze**: If the 'detected_type' in $ingestion_output is 'tabular', use the analysis_tool. Pass the original 'file_path' from $ingestion_output as the 'file_path' argument to the tool. Name the output of this step $analysis_results.
+        3. **Conditionally Analyze**: If the 'detected_type' in $ingestion_output is 'tabular', use the analysis_tool. The required 'file_path' argument for this tool should be taken directly from the 'file_path' field within the $ingestion_output variable. Name the output of this step $analysis_results.
         # Add step 4 for LLM summary of analysis results later
         """
         logger.debug(f"Generated plan prompt:\n{plan_prompt}")
@@ -43,6 +43,21 @@ class ResearchAgent:
             logger.info("Generating plan...")
             plan = self.portia.plan(plan_prompt) # This is synchronous
             logger.info(f"Plan generated: {plan.id}")
+            # --- DEBUG LOG: Check planned args for analysis_tool --- 
+            try:
+                analysis_step_index = -1
+                for i, step in enumerate(plan.steps):
+                    if step.tool_id == "analysis_tool":
+                        analysis_step_index = i
+                        break
+                if analysis_step_index != -1:
+                     analysis_step = plan.steps[analysis_step_index]
+                     logger.info(f"[DEBUG] Planned args for analysis_tool (Step {analysis_step_index}): {getattr(analysis_step, 'tool_args', 'Not Set')}")
+                else:
+                     logger.info("[DEBUG] analysis_tool step not found in the generated plan.")
+            except Exception as log_ex:
+                 logger.error(f"[DEBUG] Error logging planned args: {log_ex}")
+            # --- END DEBUG LOG ---
             
             # 2. Create the PlanRun
             logger.info(f"Creating PlanRun for plan {plan.id}...")

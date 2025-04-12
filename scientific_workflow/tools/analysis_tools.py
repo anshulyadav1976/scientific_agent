@@ -99,6 +99,9 @@ class AnalysisTool(Tool[AnalysisOutputSchema]):
 
     def run(self, ctx: ToolRunContext, file_path: str, correlation_threshold: float, outlier_iqr_multiplier: float) -> AnalysisOutputSchema:
         """Executes the analysis steps."""
+        # --- DEBUG LOG: Check received args --- 
+        logger.info(f"[{self.id}][DEBUG] Received arguments: file_path='{file_path}', threshold={correlation_threshold}, iqr_multiplier={outlier_iqr_multiplier}")
+        # --- END DEBUG LOG ---
         logger.info(f"[{self.id}] Running analysis on file: {file_path}")
         try:
             # Read CSV - consider adding encoding detection like in ingestion tool if needed

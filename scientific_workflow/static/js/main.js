@@ -104,41 +104,16 @@ function displayThinkingProcess(steps) {
                  // Display the raw output from the step
                  let outputStr = String(step.output); // Start with string conversion
                  try {
-                     // Attempt to pretty-print if it's JSON (like the ingestion output dict)
+                     // Attempt to pretty-print if it's JSON 
                      const outputObj = JSON.parse(step.output);
-                     // Add check for the specific structure of DataIngestionTool output
-                     if (typeof outputObj === 'object' && outputObj !== null && outputObj.hasOwnProperty('summary') && outputObj.hasOwnProperty('detected_type')) {
-                         const summaryData = outputObj.summary;
-                         const detectedType = outputObj.detected_type;
-                         if (detectedType === 'tabular') {
-                             outputStr = `Detected Type: Tabular\nShape: ${summaryData.shape}\nColumns: ${summaryData.columns.join(', ')}\n(Details omitted for brevity)`;
-                         } else if (detectedType === 'unstructured') {
-                            outputStr = `Detected Type: Unstructured\nLines: ${summaryData.line_count}, Words: ${summaryData.word_count}\nSnippet: ${summaryData.snippet.substring(0,100)}...`;
-                         } else {
-                            outputStr = JSON.stringify(outputObj, null, 2); // Fallback pretty print
-                         }
-                     } else {
-                         outputStr = JSON.stringify(outputObj, null, 2); // Fallback pretty print
-                     }
-                     // Add check for the specific structure of AnalysisTool output
-                     if (typeof outputObj === 'object' && outputObj !== null && outputObj.hasOwnProperty('strong_correlations') && outputObj.hasOwnProperty('descriptive_stats')) {
-                         // Format AnalysisTool results concisely
-                         let analysisSummary = `Detected Type: Tabular Analysis\n`;
-                         analysisSummary += `  Strong Correlations (${outputObj.strong_correlations.length}): ${outputObj.strong_correlations.map(c => `${c.column_1} <-> ${c.column_2} (${c.correlation})`).join(', ') || 'None'}\n`;
-                         analysisSummary += `  Outliers Found (${outputObj.outliers.length} columns): ${outputObj.outliers.map(o => `${o.column} (${o.outlier_count})`).join(', ') || 'None'}\n`;
-                         analysisSummary += `  Descriptive Stats: Calculated for ${outputObj.descriptive_stats.length} columns.\n(Full details omitted for brevity)`;
-                         outputStr = analysisSummary;
-                     }
+                     // Convert back to string with indentation for display
+                     outputStr = JSON.stringify(outputObj, null, 2); 
                  } catch (e) {
                      // If it wasn't valid JSON, stick with the simple string conversion
                      // (already assigned to outputStr)
                  }
 
-                 const maxLength = 500; // Max length for step output display
-                 if (outputStr.length > maxLength) {
-                     outputStr = outputStr.substring(0, maxLength) + '... (truncated)';
-                 }
-                 // Check if it's the LLM summary step
+                 // Display the output, potentially prefixed if it's the LLM summary
                  if (step.output_name === '$llm_summary') {
                     formattedThinking += `LLM Summary (${step.output_name}):\n${outputStr}\n`;
                  } else {

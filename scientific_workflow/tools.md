@@ -52,18 +52,6 @@ This document outlines the custom Python tools needed for the Scientific Workflo
     *   `plot_file_paths`: List of paths to the generated image files.
     *   `plot_descriptions` (Optional): Textual descriptions of what each plot shows.
 
-### 4. KeywordExtractionTool
-
-*   **Purpose**: Identify key terms from text for use in external research.
-*   **Core Functionality**:
-    *   Process input text (e.g., user context, analysis summary).
-    *   Extract relevant nouns, phrases, or named entities.
-    *   Could use basic NLP (like NLTK, spaCy) or an LLM call for more sophisticated extraction.
-*   **Inputs**:
-    *   `text_to_analyze`: String containing the context or analysis summary.
-    *   `max_keywords` (Optional): Number of keywords to return.
-*   **Outputs**:
-    *   `keywords`: List of extracted keyword strings.
 
 ### 5. ResearchTool
 

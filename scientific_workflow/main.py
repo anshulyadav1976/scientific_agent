@@ -14,6 +14,7 @@ from pathlib import Path # Added for path manipulation
 import json
 from typing import Optional # Import Optional
 from pydantic import BaseModel # Import BaseModel
+import pandas as pd # Import pandas
 
 # Import PlanRunState to check run status
 from portia import PlanRunState
@@ -122,7 +123,7 @@ async def handle_upload(
     finally:
         await file.close()
 
-    # Start the analysis using the agent
+    # Start the analysis using the agent (using the original file path now)
     try:
         logger.info(f"Calling agent.start_analysis with path: {file_path}, hint: {data_type_hint}, and prompt.")
         # Pass the absolute path, hint, and prompt
