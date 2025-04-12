@@ -6,6 +6,7 @@ Portia,
 from config.agent_config import create_agent_config
 from tools import create_tool_registry
 import logging
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -18,30 +19,41 @@ class ResearchAgent:
         self.portia = Portia(config=self.config, tools=self.tools)
         logger.info("ResearchAgent initialized.")
 
-    async def start_analysis(self, file_path: str, user_prompt: str) -> PlanRun:
-        """Starts the analysis workflow for a given dataset and user prompt."""
-        logger.info(f"Starting analysis for file: {file_path}, prompt: {user_prompt}")
+    async def start_analysis(self, file_path: str, user_prompt: str, data_type_hint: Optional[str] = None) -> PlanRun:
+        """Generates a plan and creates the initial PlanRun, but does not execute it."""
+        logger.info(f"Planning analysis for file: {file_path}, hint: {data_type_hint}, prompt: {user_prompt}")
 
         # Define the high-level plan prompt for Portia
-        # This will evolve as we add more tools in later phases
+        # Include the hint in the prompt for the planner
+        hint_text = f" The user provided a hint that the data type is '{data_type_hint}'." if data_type_hint else ""
         plan_prompt = f"""
-        Analyze the dataset located at '{file_path}'.
+        Analyze the dataset located at '{file_path}'.{hint_text}
         User context/request: '{user_prompt}'
 
         Follow these steps:
-        1. Ingest the data from the file path and provide a basic summary.
-        # Add steps for analysis, visualization, search, question generation in later phases
+        1. Ingest the data from the file path using the data_ingestion_tool, passing the provided data type hint ('{data_type_hint}' if data_type_hint else 'None') if available. The tool will output a dictionary containing a summary and the detected_type ('tabular' or 'unstructured'). Name the output of this step $ingestion_output.
+        2. **Conditionally Summarize**: If the 'detected_type' in $ingestion_output is 'unstructured', use the llm_tool to generate a concise summary of the 'snippet' found in $ingestion_output.summary. Ask the llm_tool: "Provide a brief summary (2-3 sentences) of the following text snippet: [snippet content]". Name the output of this step $llm_summary. If the detected_type is 'tabular', skip this step.
+        3. **Conditionally Analyze**: If the 'detected_type' in $ingestion_output is 'tabular', use the analysis_tool. Pass the original 'file_path' from $ingestion_output as the 'file_path' argument to the tool. Name the output of this step $analysis_results.
+        # Add step 4 for LLM summary of analysis results later
         """
+        logger.debug(f"Generated plan prompt:\n{plan_prompt}")
 
         try:
-            # Use portia.run() which handles planning and execution
-            plan_run = self.portia.run(plan_prompt)
-            logger.info(f"Portia run initiated. Run ID: {plan_run.id}, Status: {plan_run.state}")
+            # 1. Generate the plan
+            logger.info("Generating plan...")
+            plan = self.portia.plan(plan_prompt) # This is synchronous
+            logger.info(f"Plan generated: {plan.id}")
+            
+            # 2. Create the PlanRun
+            logger.info(f"Creating PlanRun for plan {plan.id}...")
+            plan_run = self.portia.create_plan_run(plan)
+            logger.info(f"PlanRun created: {plan_run.id}, State: {plan_run.state}")
+
+            # 3. Return the initial PlanRun (DO NOT run or resume here)
             return plan_run
         except Exception as e:
-            logger.error(f"Error starting Portia analysis: {e}", exc_info=True)
-            # In a real app, you might want to return a specific error state
-            raise
+            logger.error(f"Error during planning or PlanRun creation: {e}", exc_info=True)
+            raise # Re-raise the exception to be handled by the caller (FastAPI endpoint)
 
     async def get_run_status(self, run_id: str) -> PlanRun | None:
         """Retrieves the status and results of a specific plan run."""

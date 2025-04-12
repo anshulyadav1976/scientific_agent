@@ -6,3 +6,6 @@ pandas
 python-multipart # For file uploads
 jinja2
 # Add other dependencies as needed (e.g., matplotlib, scipy for later phases) 
+chardet
+numpy # Added for analysis
+scipy # Added for analysis (skewness, kurtosis)

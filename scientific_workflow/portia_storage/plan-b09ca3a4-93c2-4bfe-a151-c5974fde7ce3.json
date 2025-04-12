@@ -1,0 +1,44 @@
+{
+    "id": "plan-b09ca3a4-93c2-4bfe-a151-c5974fde7ce3",
+    "plan_context": {
+        "query": "\n        Analyze the dataset located at 'C:\\Users\\anshu\\scientific_agent\\scientific_workflow\\uploaded_files\\yoga_raw.txt'. The user provided a hint that the data type is 'unstructured'.\n        User context/request: 'take a look and lmk'\n\n        Follow these steps:\n        1. Ingest the data from the file path using the data_ingestion_tool, passing the provided data type hint ('unstructured' if data_type_hint else 'None') if available. The tool will output a dictionary containing a summary and the detected_type ('tabular' or 'unstructured'). Name the output of this step $ingestion_output.\n        2. **Conditionally Summarize**: If the 'detected_type' in $ingestion_output is 'unstructured', use the llm_tool to generate a concise summary of the 'snippet' found in $ingestion_output.summary. Ask the llm_tool: \"Provide a brief summary (2-3 sentences) of the following text snippet: [snippet content]\". Name the output of this step $llm_summary. If the detected_type is 'tabular', skip this step.\n        # Add step 3 for analysis in later phases (e.g., \"If detected_type is 'tabular', use AnalysisTool...\")\n        ",
+        "tool_ids": [
+            "data_ingestion_tool",
+            "llm_tool",
+            "search_tool"
+        ]
+    },
+    "steps": [
+        {
+            "task": "Ingest the data from the provided file path 'C:\\Users\\anshu\\scientific_agent\\scientific_workflow\\uploaded_files\\yoga_raw.txt' using the data ingestion tool with the data type hint set to 'unstructured'. The tool is expected to return a summary containing details such as a snippet and the detected_type.",
+            "inputs": [],
+            "tool_id": "data_ingestion_tool",
+            "output": "$ingestion_output",
+            "condition": null
+        },
+        {
+            "task": "If the detected_type from the ingestion output is 'unstructured', generate a concise summary using the LLM tool. The task is to provide a brief summary (2-3 sentences) of the text snippet from the ingestion output summary.",
+            "inputs": [
+                {
+                    "name": "$ingestion_output",
+                    "description": "Output from the ingestion tool including the summary (with the snippet) and detected_type."
+                }
+            ],
+            "tool_id": "llm_tool",
+            "output": "$llm_summary",
+            "condition": "if $ingestion_output.detected_type equals 'unstructured'"
+        },
+        {
+            "task": "Record a placeholder for further analysis steps in later phases for the case when the detected_type is 'tabular'.",
+            "inputs": [
+                {
+                    "name": "$ingestion_output",
+                    "description": "Output from the ingestion tool to determine if further tabular data analysis is needed."
+                }
+            ],
+            "tool_id": "llm_tool",
+            "output": "$analysis_placeholder",
+            "condition": "if $ingestion_output.detected_type equals 'tabular'"
+        }
+    ]
+}

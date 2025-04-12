@@ -3,6 +3,8 @@
 # Import specific tools into this namespace for easy registration
 # Example (will be created in Phase 1):
 from .data_tools import DataIngestionTool
+# Import the new analysis tool
+from .analysis_tools import AnalysisTool
 
 from portia.tool_registry import InMemoryToolRegistry
 # Import Portia's built-in tools if needed directly
@@ -17,6 +19,7 @@ def create_tool_registry() -> InMemoryToolRegistry:
     custom_tools = [
         # Add instances of custom tools here as they are created
         DataIngestionTool(),
+        AnalysisTool(), # Add the new tool instance
     ]
 
     # Combine custom tools with relevant open-source tools
