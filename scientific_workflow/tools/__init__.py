@@ -6,7 +6,7 @@
 # from .analysis_tools import AnalysisTool
 # Import the new Ollama tool
 from .ollama_tool import OllamaTool
-# Import SearchTool if/when needed
+# SearchTool might be needed later
 # from .search_tools import ScientificSearchTool
 
 from portia.tool_registry import InMemoryToolRegistry
@@ -21,15 +21,15 @@ def create_tool_registry() -> InMemoryToolRegistry:
     """
     custom_tools = [
         # Add instances of custom tools here as they are created
-        OllamaTool(),
-        # Add SearchTool instance here later if needed
+        OllamaTool(), # Add the Ollama tool instance
+        # ScientificSearchTool(), # Add later in M3
     ]
 
     # Combine custom tools with relevant open-source tools
-    # We probably don't need LLMTool if OllamaTool handles generation.
-    # Keep SearchTool for M3.
+    # We might not even need LLMTool if OllamaTool handles all generation
+    # Keep SearchTool for potential use in M3
     existing_custom_ids = {tool.id for tool in custom_tools}
-    relevant_oss_tools = ["search_tool"] # Keep potentially needed OSS tools
+    relevant_oss_tools = ["search_tool"] # Only need SearchTool from OSS for now
     combined_tools = custom_tools + [
         tool for tool in open_source_tool_registry.get_tools()
         if tool.id in relevant_oss_tools and tool.id not in existing_custom_ids

@@ -296,10 +296,17 @@ if (uploadForm) {
         if (resultsArea) resultsArea.style.display = 'none'; // Hide results initially
 
         const formData = new FormData(uploadForm);
-        const userPrompt = formData.get('prompt');
+        const promptValue = formData.get('prompt'); // Get prompt for display
+        const ollamaUrlValue = document.getElementById('ollama-url-input').value; // Get Ollama URL
+
+        // Append ollama_url explicitly as it might not be picked up automatically if outside form element's direct children?
+        // Or just to be sure.
+        if (ollamaUrlValue) {
+            formData.append('ollama_url', ollamaUrlValue);
+        }
 
         // Display user prompt immediately
-        addChatMessage("User", userPrompt);
+        addChatMessage("User", promptValue);
         updateStatus("Sending request to agent to create plan...");
 
         try {

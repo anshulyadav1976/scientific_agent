@@ -89,14 +89,14 @@ async def read_root(request: Request):
 # Add data_type_hint to arguments, default to None
 # Make file optional for Milestone 1
 async def handle_upload(
-    request: Request,
+    request: Request, 
     prompt: str = Form(...),
-    ollama_url: str = Form(...), # Add Ollama URL form field
+    ollama_url: str = Form(...), # Add ollama_url form field
     file: Optional[UploadFile] = File(None), # Make file optional
     data_type_hint: Optional[str] = Form(None) # Get hint from form
 ):
-    """Handles prompt submission (and optional file upload) and runs a simple analysis."""
-    logger.info(f"Received upload request. Prompt: '{prompt[:50]}...'")
+    """Handles prompt submission, Ollama URL, and optional file upload."""
+    logger.info(f"Received upload request. Prompt: '{prompt[:50]}...', Ollama: {ollama_url}")
 
     if agent is None:
         logger.error("Upload attempt failed: Agent not initialized.")
@@ -131,60 +131,30 @@ async def handle_upload(
             logger.error(f"Failed to save uploaded file {file_path}: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Failed to save uploaded file.")
         finally:
+            # Ensure file is closed even if saving fails
             await file.close()
     else:
         logger.info("No file provided with the request.")
     # --- End File Handling Block ---
 
-    # TODO: Implement proper text extraction for different file types
-    def extract_text_from_file(file_path: Path) -> Optional[str]:
-        logger.info(f"Attempting to extract text from: {file_path}")
-        try:
-            # Basic text reading for now
-            if file_path.suffix.lower() == ".txt":
-                 # Add encoding detection maybe?
-                 return file_path.read_text(encoding='utf-8')
-            # Add handlers for .pdf, .docx, .csv etc. here later
-            # Example using pandas for CSV - extract first N rows?
-            elif file_path.suffix.lower() == ".csv":
-                 df = pd.read_csv(file_path)
-                 # Convert dataframe to string representation (e.g., markdown or just head)
-                 return df.head().to_markdown()
-            else:
-                 logger.warning(f"Unsupported file type for text extraction: {file_path.suffix}")
-                 return None
-        except Exception as e:
-             logger.error(f"Error extracting text from {file_path}: {e}", exc_info=True)
-             return None
-
     # Start the analysis using the agent
     try:
         logger.info(f"Calling agent.start_analysis with prompt and Ollama URL.")
-        # --- Text Extraction --- #
-        extracted_text: Optional[str] = None
-        if file_path_str:
-             extracted_text = extract_text_from_file(Path(file_path_str))
-             if not extracted_text:
-                  logger.warning(f"Could not extract text from {file_path_str}, proceeding without file content.")
-        # --- End Text Extraction --- #
-
-        # Pass prompt, ollama_url, and extracted text
+        # Pass prompt, ollama_url, and optional file path
         run_id = await agent.start_analysis(
             user_prompt=prompt,
-            ollama_url=ollama_url, # Pass the url
-            extracted_text=extracted_text
+            ollama_url=ollama_url, # Pass the URL
+            file_path=file_path_str
         )
-        logger.info(f"Agent analysis planned (Stage 1). Run ID: {run_id}")
+        logger.info(f"Agent Stage 1 analysis planned. Run ID: {run_id}")
 
         # Return the run ID to the frontend
         return JSONResponse(content={
             "run_id": run_id
         })
     except Exception as e:
-        logger.error(f"Failed to run agent analysis for prompt '{prompt[:50]}...': {e}", exc_info=True)
-        # Clean up saved file if analysis start fails?
-        # if file_path_str: os.remove(file_path_str) # Consider implications
-        raise HTTPException(status_code=500, detail=f"Failed to run analysis: {e}")
+        logger.error(f"Failed to start agent analysis: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to start analysis: {e}")
 
 # --- Remove or comment out endpoints not needed for M1 --- #
 
@@ -468,11 +438,19 @@ async def get_status(run_id: str):
         raise HTTPException(status_code=503, detail="Agent is not available.")
 
     try:
-        # Use the async agent method
         plan_run = await agent.get_run_status(run_id)
+        plan = None
+        if plan_run:
+            try:
+                plan = await agent.get_plan(plan_run.plan_id)
+            except PlanNotFoundError:
+                 logger.error(f"Plan not found in storage for Plan ID {plan_run.plan_id}")
+            except Exception as e:
+                logger.error(f"Error retrieving plan {plan_run.plan_id}: {e}", exc_info=True)
 
         # --- Get Plan for Thinking Process --- #
         plan = None
+        # Correct indentation for try block
         try:
             # Use the async agent method
             plan = await agent.get_plan(plan_run.plan_id)
@@ -490,18 +468,18 @@ async def get_status(run_id: str):
             max_step_index = len(plan.steps) if plan_run.state in [PlanRunState.COMPLETE, PlanRunState.FAILED] else plan_run.current_step_index + 1
             for i in range(min(max_step_index, len(plan.steps))):
                 step = plan.steps[i]
+                # Correct indentation for step_detail dict
                 step_detail = {
                     "step_index": i,
                     "description": step.task,
                     "tool_id": step.tool_id,
-                    # Use getattr for safe access to potentially missing tool_args if they exist on the step
-                    # "tool_args": getattr(step, 'tool_args', {}), # Portia plans don't typically store resolved args here
                     "status": "Pending", # Default status
                     "output": "(Not yet generated)", # Default output message
                     "output_name": step.output
                 }
 
                 # Determine step status and output
+                # Correct indentation for if/elif block
                 if i < plan_run.current_step_index or plan_run.state in [PlanRunState.COMPLETE, PlanRunState.FAILED]:
                     step_detail["status"] = "Executed"
                     # Try to get the output for this step using step.output as the key
@@ -529,10 +507,10 @@ async def get_status(run_id: str):
                 elif plan_run.state == PlanRunState.NEED_CLARIFICATION and i == plan_run.current_step_index:
                     step_detail["status"] = "Paused (Needs Clarification)"
                     step_detail["output"] = "(Awaiting user input)"
-
+                
                 thinking_process.append(step_detail)
         else:
-             logger.warning(f"Could not retrieve plan for run {run_id}, thinking process unavailable.")
+            logger.warning(f"Could not retrieve plan for run {run_id}, thinking process unavailable.")
 
         # --- Prepare the basic response content --- #
         # Process step outputs to make them JSON serializable
@@ -569,6 +547,22 @@ async def get_status(run_id: str):
                  logger.warning(f"Run {run_id} complete but no final_output.value found.")
                  serializable_final_output = "(Completed, but no final output available)"
 
+        # Add clarification extraction
+        clarification_info = None
+        if plan_run.state == PlanRunState.NEED_CLARIFICATION:
+            logger.info(f"Run {run_id} needs clarification.")
+            outstanding = plan_run.get_outstanding_clarifications() # Corrected variable name
+            if outstanding:
+                # Get the first outstanding clarification
+                clarification = outstanding[0]
+                clarification_info = {
+                    "id": str(clarification.id),
+                    "prompt": clarification.prompt
+                }
+            else:
+                 logger.error(f"Run {run_id} is NEED_CLARIFICATION but no outstanding clarifications found.")
+                 # Optionally set an error state here?
+
         response_content = {
             "run_id": str(plan_run.id),
             "status": plan_run.state.value,
@@ -577,7 +571,7 @@ async def get_status(run_id: str):
             "thinking_process": thinking_process,
             # Add step_outputs - Use the processed dictionary
             "step_outputs": serializable_step_outputs,
-            # "clarification": None, # Add in M4
+            "clarification": clarification_info, # Add clarification details
         }
 
         # --- Handle FINAL Output/Error based on Run State --- #
@@ -585,10 +579,6 @@ async def get_status(run_id: str):
             logger.warning(f"Run {run_id} failed. Reporting error.")
             # TODO: Extract more specific error from plan_run if possible in future Portia versions
             response_content["error"] = f"Run failed. Check agent logs for details."
-
-        # Add NEED_CLARIFICATION check later
-        # elif plan_run.state == PlanRunState.NEED_CLARIFICATION:
-            # ... handle clarification extraction ...
 
         return JSONResponse(content=response_content)
 
@@ -639,6 +629,39 @@ async def resume_run(run_id: str):
     except Exception as e:
         logger.error(f"Unexpected error resuming run {run_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error resuming run: {e}")
+
+# --- Re-enable /clarify endpoint --- #
+@app.post("/clarify/{run_id}")
+async def handle_clarification(run_id: str, payload: ClarificationPayload):
+    """Handles user responses to agent clarifications."""
+    logger.info(f"Received clarification response for run_id: {run_id}, clarification_id: {payload.clarification_id}")
+    if agent is None:
+        logger.error(f"Clarification attempt failed for {run_id}: Agent not initialized.")
+        raise HTTPException(status_code=503, detail="Agent is not available.")
+
+    try:
+        # Use the agent's method to store response and update state
+        updated_run = await agent.resolve_clarification(
+            run_id=run_id,
+            clarification_id=payload.clarification_id,
+            response=payload.response
+        )
+        logger.info(f"Clarification response stored for run {run_id}. New state: {updated_run.state}")
+        # Return status immediately, frontend should call /resume if state is READY_TO_RESUME
+        return JSONResponse(content={
+            "message": f"Clarification response received. Run state is now {updated_run.state.value}",
+            "run_id": str(updated_run.id),
+            "status": updated_run.state.value
+        })
+
+    except (PlanRunNotFoundError, InvalidPlanRunStateError, ValueError) as pe:
+        # ValueError added for case where clarification ID not found in agent method
+        logger.warning(f"Error handling clarification for run {run_id}: {pe}")
+        status_code = 404 if isinstance(pe, PlanRunNotFoundError) or isinstance(pe, ValueError) else 400
+        raise HTTPException(status_code=status_code, detail=str(pe))
+    except Exception as e:
+        logger.error(f"Unexpected error handling clarification for {run_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error handling clarification: {e}")
 
 # --- Run Application --- #
 

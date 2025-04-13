@@ -9,3 +9,7 @@ jinja2
 chardet
 numpy # Added for analysis
 scipy # Added for analysis (skewness, kurtosis)
+tiktoken
+jinja2 # Or jinja2 if not using async templates
+pydantic
+httpx # Needed for OllamaTool

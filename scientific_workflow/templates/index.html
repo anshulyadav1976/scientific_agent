@@ -45,16 +45,16 @@
                         <label for="file-upload">Upload File (Optional CSV/TXT):</label>
                         <input type="file" id="file-upload" name="file" accept=".csv, .txt, text/plain, text/csv, application/vnd.ms-excel">
                     </div>
+                    <div class="form-group">
+                        <label for="ollama-url-input">Ollama URL:</label>
+                        <input type="text" id="ollama-url-input" name="ollama_url" placeholder="e.g., http://localhost:11434" required>
+                    </div>
                     <!-- Optional: Add data type hint input if needed later
                     <div class="form-group">
                         <label for="data-type-hint">Data Type Hint (Optional):</label>
                         <input type="text" id="data-type-hint" name="data_type_hint" placeholder="e.g., tabular, unstructured">
                     </div>
                      -->
-                    <div class="form-group">
-                        <label for="ollama-url">Ollama URL:</label>
-                        <input type="url" id="ollama-url" name="ollama_url" placeholder="e.g., http://localhost:11434" required>
-                    </div>
                     <div class="form-group prompt-group">
                         <textarea id="prompt-input" name="prompt" placeholder="Enter your research prompt..." rows="3" required></textarea>
                         <button type="submit">Send</button>
