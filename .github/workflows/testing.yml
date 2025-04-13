@@ -1,0 +1,52 @@
+name: Python Testing
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - labeled
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  testing:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest-16core
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: install poetry
+        run: pipx install poetry
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "poetry"
+
+      - name: install dependencies
+        run: poetry install --all-extras
+
+      - name: unit_tests + coverage
+        env:
+          PORTIA_API_ENDPOINT: "https://api.porita.dev"
+        run: |
+          set -o pipefail
+          poetry run pytest tests/unit
+
+      - name: tests + coverage
+        env:
+          PORTIA_API_ENDPOINT: "https://api.porita.dev"
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          PORTIA_API_KEY: ${{ secrets.PORTIA_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        run: |
+          set -o pipefail
+          poetry run pytest -n 8 --cov --cov-fail-under 100 --log-cli-level=WARNING --junitxml=pytest.xml | tee pytest-coverage.txt
