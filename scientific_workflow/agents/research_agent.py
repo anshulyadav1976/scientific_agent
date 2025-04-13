@@ -9,9 +9,10 @@ from portia import (
     PlanRunState,
     Plan,
     default_config,
-    LLMTool,
-    # DiskFileStorage is in the storage submodule
+    # LLMTool no longer needed if OllamaTool handles it
+    # LLMTool,
     StorageClass,
+    Clarification, InputClarification # Import clarification types
 )
 # Import DiskFileStorage from its submodule
 from portia.storage import DiskFileStorage
@@ -19,17 +20,46 @@ from portia.storage import DiskFileStorage
 from tools import create_tool_registry # Import locally to avoid circular dependency if tools need config
 # Import PlanBuilder for easier plan creation if needed, or construct manually
 # from portia import PlanBuilder
+import json # Import json for potential parsing if needed
 
 logger = logging.getLogger(__name__)
 
-# --- Define the plan prompt for Milestone 2 --- #
-# This now includes Step 1a (Ingest) and Step 1b (LLM Plan Generation)
-PLAN_PROMPT_STEP_1 = """
-Follow these steps to analyze the user request:
-1.  **Ingest Data (Conditional):** If a file path '{file_path}' was provided, run the `data_ingestion_tool` with the `file_path` argument set to '{file_path}'. Name the output of this step `$ingestion_output`. If no file path was provided, skip this step and set `$ingestion_output` to None.
-2.  **Generate Initial Plan:** Analyze the user prompt '{user_prompt}' and the `$ingestion_output` (if available). Define the main research `goal`. Determine if analysis of the provided data is required ('`analysis_required`: true/false'). Outline key `research_questions` and list initial `search_topics` for literature/web search. Output ONLY a JSON object containing these keys: {{"goal": "...", "analysis_required": true/false, "research_questions": [...], "search_topics": [...]}}. Name the output of this step `$initial_plan`.
+# --- Define the Stage 1 Prompt --- #
+QUESTION_GEN_PROMPT_TEMPLATE = """
+Analyze the following user request and extracted text content (if any).
+Your goal is ONLY to identify and list the specific clarifying questions you need to ask the user to fully understand the research task and perform it effectively later.
+Do NOT perform the research task itself yet.
+
+User Request: {user_prompt}
+
+Extracted Text Content:
+```
+{extracted_text}
+```
+
+Based *only* on the above, what clarifying questions do you have for the user? List them clearly.
+If no clarification is needed, state "No clarification needed.".
+Output ONLY the questions or the statement "No clarification needed.".
 """
 
+# Define Stage 2 Prompt Template (for later use)
+RESEARCH_PROMPT_TEMPLATE = """Perform the research task based on the original request, the provided text content, and the user's answers to clarifying questions.
+
+Original User Request: {user_prompt}
+
+Extracted Text Content:
+```
+{extracted_text}
+```
+
+User Answers to Clarifying Questions:
+```
+{user_answers}
+```
+
+Now, perform the full research task based on all the information above. Provide a comprehensive final report.
+{tool_instructions} # Placeholder for how to call tools if needed later
+"""
 
 class ResearchAgent:
     def __init__(self):
@@ -59,37 +89,51 @@ class ResearchAgent:
         # --- END DEBUG LOGGING --- #
         logger.info("ResearchAgent initialized with default config and LLMTool.")
 
-    # Return type is now str (the run_id)
-    async def start_analysis(self, user_prompt: str, file_path: Optional[str] = None) -> str:
-        """Generates a plan for the user prompt & optional file, and creates the initial PlanRun."""
-        logger.info(f"Planning analysis for prompt: {user_prompt}")
-        file_path_str = file_path if file_path else "None" # Pass "None" string if no path
-        if file_path:
-            logger.info(f"File path {file_path} provided.")
+    async def start_analysis(self, user_prompt: str, ollama_url: str, extracted_text: Optional[str] = None) -> str:
+        """Generates the Stage 1 plan (question generation) and creates the PlanRun."""
+        logger.info(f"Planning Stage 1 (Question Gen) for prompt: {user_prompt} using {ollama_url}")
+        text_content = extracted_text if extracted_text else "No text content provided."
 
-        # Generate the plan prompt using the template for Step 1
-        plan_prompt = PLAN_PROMPT_STEP_1.format(user_prompt=user_prompt, file_path=file_path_str)
-        logger.debug(f"Generating plan with prompt:\n{plan_prompt}")
+        # Format the Stage 1 prompt
+        stage1_prompt = QUESTION_GEN_PROMPT_TEMPLATE.format(
+            user_prompt=user_prompt,
+            extracted_text=text_content
+        )
+        logger.debug(f"Generating Stage 1 plan with prompt:\n{stage1_prompt}")
 
         try:
-            # 1. Generate the plan
-            plan: Plan = self.portia.plan(plan_prompt)
-            logger.info(f"Plan generated: {plan.id}")
+            # Manually create Plan object for more control
+            plan = Plan(
+                plan_context={ # Use dict directly for context
+                    "query": user_prompt, # Store original query
+                    "ollama_url": ollama_url, # Store ollama url
+                     # Add other relevant context if needed
+                 },
+                 steps=[
+                     {
+                         "task": "Generate clarifying questions using Ollama.",
+                         "tool_id": "ollama_tool",
+                         # Pass arguments needed by OllamaTool.run
+                         "tool_args": {
+                             "prompt": stage1_prompt,
+                             "ollama_url": ollama_url,
+                             # "model_name": "your_preferred_model" # Optional: override default
+                         },
+                         "output": "$clarifying_questions", # Name the output
+                     }
+                 ]
+            )
+            # Save the plan explicitly if needed (Portia might handle this in create_plan_run too)
+            self.portia.storage.save_plan(plan)
+            logger.info(f"Stage 1 Plan generated and saved: {plan.id}")
 
-            # 2. Create the PlanRun (does not start execution)
-            plan_run: PlanRun = self.portia.create_plan_run(plan)
+            # Create the PlanRun
+            plan_run = self.portia.create_plan_run(plan)
             logger.info(f"PlanRun created: {plan_run.id}, State: {plan_run.state}")
-
-            # --- DEBUG LOGGING --- #
-            logger.info(f"[start_analysis] Agent {id(self)} returning run_id {plan_run.id} from storage {id(self.portia.storage)}")
-            # --- END DEBUG LOGGING --- #
-
-            # 3. Return the run_id
             return str(plan_run.id)
 
         except Exception as e:
-            logger.error(f"Error during planning or PlanRun creation: {e}", exc_info=True)
-            # Re-raise the exception to be handled by the FastAPI endpoint
+            logger.error(f"Error during Stage 1 planning or PlanRun creation: {e}", exc_info=True)
             raise
 
     # --- Methods needed for stateful execution --- #
@@ -115,45 +159,145 @@ class ResearchAgent:
     # Method to resume a run - needed by /resume endpoint
     # This *is* the main execution logic trigger in Portia
     async def resume_run(self, run_id: str) -> PlanRun:
-        """Resumes a PlanRun execution."""
+        """Resumes a PlanRun. Handles transition from Stage 1 (Question Gen) to Clarification."""
         logger.info(f"Attempting to resume run: {run_id}")
-        # --- DEBUG LOGGING --- #
-        logger.info(f"[resume_run] Agent {id(self)} using storage {id(self.portia.storage)} to resume run {run_id}")
-        # --- END DEBUG LOGGING --- #
-        # Portia's resume handles running steps until completion or clarification
-        # Raises PlanRunNotFoundError, InvalidPlanRunStateError etc.
-        # Assuming portia.resume is awaitable or handles sync execution appropriately
-        resumed_run = self.portia.resume(plan_run_id=run_id)
-        logger.info(f"Resume completed for {run_id}. Final state: {resumed_run.state}")
-        return resumed_run
+        current_run = await self.get_run_status(run_id)
+
+        if current_run.state == PlanRunState.NOT_STARTED:
+            # --- Execute Stage 1: Question Generation --- #
+            logger.info(f"Executing Stage 1 (Question Gen) for run {run_id}")
+            try:
+                # Use Portia's resume to run the single OllamaTool step
+                completed_stage1_run = self.portia.resume(plan_run_id=run_id)
+
+                # Check if OllamaTool step completed successfully
+                if completed_stage1_run.state == PlanRunState.COMPLETE:
+                    # Get the output (the questions string)
+                    questions_output = completed_stage1_run.outputs.step_outputs.get("$clarifying_questions")
+                    if questions_output and hasattr(questions_output, 'value'):
+                        questions_text = str(questions_output.value).strip()
+                        logger.info(f"Ollama generated questions: {questions_text[:200]}...")
+
+                        if "no clarification needed" in questions_text.lower():
+                            # TODO: Skip clarification & proceed directly to Stage 2?
+                            # For now, treat as complete, requiring manual resume for stage 2
+                            logger.info("Ollama indicated no clarification needed. Run complete (manual resume needed for Stage 2).")
+                            # State is already COMPLETE from portia.resume
+                            return completed_stage1_run
+                        else:
+                            # Manually create and save clarification
+                            clarification = InputClarification(prompt=questions_text)
+                            # Add clarification to the *original* run object we fetched
+                            current_run.outputs.clarifications.append(clarification)
+                            current_run.state = PlanRunState.NEED_CLARIFICATION
+                            self.portia.storage.save_plan_run(current_run)
+                            logger.info(f"Run {run_id} state set to NEED_CLARIFICATION.")
+                            return current_run # Return the modified run object
+                    else:
+                        logger.error(f"Could not find or read $clarifying_questions output for run {run_id}")
+                        completed_stage1_run.state = PlanRunState.FAILED # Mark as failed
+                        self.portia.storage.save_plan_run(completed_stage1_run)
+                        return completed_stage1_run
+                else:
+                    # Stage 1 failed during portia.resume
+                    logger.error(f"Stage 1 execution failed for run {run_id}. Final state: {completed_stage1_run.state}")
+                    return completed_stage1_run # Return the failed run
+
+            except Exception as e:
+                logger.error(f"Exception during Stage 1 execution for run {run_id}: {e}", exc_info=True)
+                # Mark run as failed if exception occurs
+                current_run.state = PlanRunState.FAILED
+                self.portia.storage.save_plan_run(current_run)
+                return current_run
+
+        elif current_run.state == PlanRunState.READY_TO_RESUME:
+            # --- Execute Stage 2: Main Research --- #
+            logger.info(f"Executing Stage 2 (Research) for run {run_id}")
+            # Retrieve stored answers and original context
+            user_answers = current_run.outputs.step_outputs.get("user_answers", "No answers provided.")
+            # We need original prompt and text - store them in PlanRun context or re-fetch Plan?
+            # Fetching plan is safer
+            plan = await self.get_plan(current_run.plan_id)
+            original_prompt = plan.plan_context.get("query", "Original prompt missing.")
+            ollama_url = plan.plan_context.get("ollama_url", None)
+            # TODO: Need extracted text too - store it in plan_context? Assume it is for now.
+            extracted_text = plan.plan_context.get("extracted_text", "Extracted text missing.")
+            # TODO: Get tool instructions/format if implementing tool use
+            tool_instructions = "" # Placeholder
+
+            if not ollama_url:
+                 logger.error(f"Ollama URL missing in plan context for run {run_id}. Cannot execute Stage 2.")
+                 current_run.state = PlanRunState.FAILED
+                 self.portia.storage.save_plan_run(current_run)
+                 return current_run
+
+            stage2_prompt = RESEARCH_PROMPT_TEMPLATE.format(
+                user_prompt=original_prompt,
+                extracted_text=extracted_text,
+                user_answers=user_answers,
+                tool_instructions=tool_instructions
+            )
+            logger.debug(f"Stage 2 prompt for run {run_id}:\n{stage2_prompt[:500]}...")
+
+            try:
+                # Call OllamaTool directly (or create a temporary run)
+                # Simplest: Direct call within the resume logic
+                ollama_tool = self.tools.get_tool("ollama_tool")
+                # Need to pass a dummy ToolRunContext or the real one if available?
+                # Pass None for now, OllamaTool doesn't use it yet
+                final_report = await ollama_tool.run(
+                    ctx=None, # OllamaTool doesn't use ctx currently
+                    prompt=stage2_prompt,
+                    ollama_url=ollama_url
+                    # model_name can be specified if needed
+                )
+
+                # Update the original run
+                current_run.outputs.final_output = LocalOutput(value=final_report) # Wrap in Output object
+                current_run.state = PlanRunState.COMPLETE
+                self.portia.storage.save_plan_run(current_run)
+                logger.info(f"Stage 2 completed for run {run_id}. State set to COMPLETE.")
+                return current_run
+
+            except Exception as e:
+                logger.error(f"Exception during Stage 2 execution for run {run_id}: {e}", exc_info=True)
+                current_run.state = PlanRunState.FAILED
+                self.portia.storage.save_plan_run(current_run)
+                return current_run
+        else:
+            # Should not happen if called correctly after /clarify or /upload
+            logger.warning(f"Resume called for run {run_id} in unexpected state: {current_run.state}. Returning current run.")
+            return current_run
 
     # Method to resolve clarification - needed by /clarify endpoint later
     async def resolve_clarification(self, run_id: str, clarification_id: str, response: str) -> PlanRun:
-        """Submits a user response to resolve an agent clarification."""
-        logger.info(f"Resolving clarification {clarification_id} for run {run_id} with response: '{response}'")
-        # Need to fetch the run first to find the clarification object
+        """Stores user answers and sets run state to READY_TO_RESUME."""
+        logger.info(f"Storing clarification response for run {run_id}, clarification {clarification_id}")
         run = await self.get_run_status(run_id)
-        clarification_to_resolve = None
-        for clr in run.get_outstanding_clarifications():
+
+        if run.state != PlanRunState.NEED_CLARIFICATION:
+            raise InvalidPlanRunStateError(f"Run {run_id} is not in NEED_CLARIFICATION state.")
+
+        # Find the clarification to mark as resolved (optional but good practice)
+        found = False
+        for clr in run.outputs.clarifications:
             if str(clr.id) == clarification_id:
-                clarification_to_resolve = clr
+                clr.resolved = True
+                clr.resolution = response # Store response with the clarification too
+                found = True
                 break
+        if not found:
+             logger.warning(f"Did not find clarification {clarification_id} to mark resolved, but proceeding.")
 
-        if not clarification_to_resolve:
-            error_msg = f"Outstanding clarification ID {clarification_id} not found for run {run_id}"
-            logger.error(error_msg)
-            # Depending on Portia version, InvalidState might be better
-            raise ValueError(error_msg)
+        # Store the answers in the step_outputs for Stage 2
+        # Use LocalOutput wrapper
+        from portia.execution_agents.output import LocalOutput
+        run.outputs.step_outputs["user_answers"] = LocalOutput(value=response)
+        run.state = PlanRunState.READY_TO_RESUME
 
-        # Use Portia's method to resolve
-        # Assuming portia.resolve_clarification is awaitable or handles sync execution
-        updated_run = self.portia.resolve_clarification(
-            clarification=clarification_to_resolve,
-            response=response,
-            plan_run=run
-        )
-        logger.info(f"Clarification {clarification_id} resolved for run {run_id}. New Status: {updated_run.state}")
-        return updated_run
+        self.portia.storage.save_plan_run(run)
+        logger.info(f"Stored answers for run {run_id}. State set to READY_TO_RESUME.")
+        return run
 
     # --- Methods below are not needed for Milestone 1 --- #
 

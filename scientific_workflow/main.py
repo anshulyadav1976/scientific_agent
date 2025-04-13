@@ -91,6 +91,7 @@ async def read_root(request: Request):
 async def handle_upload(
     request: Request,
     prompt: str = Form(...),
+    ollama_url: str = Form(...), # Add Ollama URL form field
     file: Optional[UploadFile] = File(None), # Make file optional
     data_type_hint: Optional[str] = Form(None) # Get hint from form
 ):
@@ -135,15 +136,45 @@ async def handle_upload(
         logger.info("No file provided with the request.")
     # --- End File Handling Block ---
 
-    # Start the analysis using the agent (simplified for M1)
+    # TODO: Implement proper text extraction for different file types
+    def extract_text_from_file(file_path: Path) -> Optional[str]:
+        logger.info(f"Attempting to extract text from: {file_path}")
+        try:
+            # Basic text reading for now
+            if file_path.suffix.lower() == ".txt":
+                 # Add encoding detection maybe?
+                 return file_path.read_text(encoding='utf-8')
+            # Add handlers for .pdf, .docx, .csv etc. here later
+            # Example using pandas for CSV - extract first N rows?
+            elif file_path.suffix.lower() == ".csv":
+                 df = pd.read_csv(file_path)
+                 # Convert dataframe to string representation (e.g., markdown or just head)
+                 return df.head().to_markdown()
+            else:
+                 logger.warning(f"Unsupported file type for text extraction: {file_path.suffix}")
+                 return None
+        except Exception as e:
+             logger.error(f"Error extracting text from {file_path}: {e}", exc_info=True)
+             return None
+
+    # Start the analysis using the agent
     try:
-        logger.info(f"Calling agent.start_analysis with prompt.")
-        # Pass prompt and optional file path
+        logger.info(f"Calling agent.start_analysis with prompt and Ollama URL.")
+        # --- Text Extraction --- #
+        extracted_text: Optional[str] = None
+        if file_path_str:
+             extracted_text = extract_text_from_file(Path(file_path_str))
+             if not extracted_text:
+                  logger.warning(f"Could not extract text from {file_path_str}, proceeding without file content.")
+        # --- End Text Extraction --- #
+
+        # Pass prompt, ollama_url, and extracted text
         run_id = await agent.start_analysis(
             user_prompt=prompt,
-            file_path=file_path_str # Pass None if no file was uploaded
+            ollama_url=ollama_url, # Pass the url
+            extracted_text=extracted_text
         )
-        logger.info(f"Agent analysis planned. Run ID: {run_id}")
+        logger.info(f"Agent analysis planned (Stage 1). Run ID: {run_id}")
 
         # Return the run ID to the frontend
         return JSONResponse(content={
